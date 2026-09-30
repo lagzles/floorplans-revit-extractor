@@ -24,6 +24,13 @@ serialização JSON) vive em `src/FloorplansRevitExtractor.Core`, sem
 dependência da API do Revit, e tem cobertura de testes unitários em
 `tests/FloorplansRevitExtractor.Core.Tests`.
 
+`Core/Raster` e `Core/Png` (M1 do spec v2) pintam as máscaras a partir de
+polígonos já em pixels: preenchimento por varredura sem antialiasing (centro
+do pixel, par-ímpar para furos), a ordem de pintura das 10 classes com o
+estêncil de móvel e arco de porta, a máscara de instância (`room_id + 1`) e a
+escrita de PNG modo P e 16 bits (`I;16` no PIL), sem biblioteca de imagem.
+Ainda não estão ligados a nenhum comando do Revit.
+
 ## Build
 
 Alvo: Revit 2024 (.NET Framework 4.8). Não é necessário ter o Revit
