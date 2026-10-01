@@ -30,9 +30,19 @@ namespace FloorplansRevitExtractor.Core.Model
         public required string ExportedAt { get; init; }
 
         public required string PluginVersion { get; init; }
+
+        /// <summary>Spec v2: the px/m requested for the export (the measured one is in transform).</summary>
+        public double? PxPerMTarget { get; init; }
+
+        /// <summary>Spec v2: "direto" or "registrado" (the transform came from automatic registration).</summary>
+        public string? Alignment { get; init; }
     }
 
-    /// <summary>params fragment, spec section 3.2 - only fields derivable from rooms alone.</summary>
+    /// <summary>
+    /// params fragment, spec v1 section 3.2, with the keys of the current
+    /// training dataset (struct7k_v4). Generator knobs the Revit model cannot
+    /// measure stay null.
+    /// </summary>
     public sealed record ParamsFragment
     {
         public int NBedrooms { get; init; }
@@ -49,9 +59,19 @@ namespace FloorplansRevitExtractor.Core.Model
 
         public bool? ThinPartitions { get; init; } = null;
 
-        public string? CornerCut { get; init; } = null;
+        public double? CornerCut { get; init; } = null;
 
         public string? CornerKind { get; init; } = null;
+
+        public int? WallPillars { get; init; } = null;
+
+        public double? ThinShare { get; init; } = null;
+
+        public int? NotchCount { get; init; } = null;
+
+        public double? NotchDepth { get; init; } = null;
+
+        public double? NotchWidth { get; init; } = null;
 
         public double? WallIntMin { get; init; } = null;
 

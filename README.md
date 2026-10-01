@@ -39,6 +39,16 @@ precisão para servir de teste de regressão). `GeomRasterizer` pinta a máscara
 direto de um `GeomDocument`. Nada disso está ligado a um comando do Revit
 ainda.
 
+A M3 monta o label (`Core/Label`, `LabelJsonWriter`): o schema do dataset de
+treino campo por campo, na ordem de chaves de um label real do
+`struct7k_v4`, com `source` logo após `seed`. `instances_px` é calculado
+como o `labels.py` do gerador (conferido bit a bit em 999 instâncias), com o
+`round()` do Python. Onde o texto do spec v1 e o gerador divergem, vale o
+gerador, porque a amostra se junta ao dado dele: `envelope` pela contagem de
+vértices (4 rect, 6 L, 8 T, senão U), `exterior` = porta em parede externa,
+`room_a` sempre preenchido. As chaves de `params` e `render_style` vêm do v4;
+trocar quando houver um label do v7.
+
 ## Build
 
 Alvo: Revit 2024 (.NET Framework 4.8). Não é necessário ter o Revit
