@@ -22,7 +22,7 @@ namespace FloorplansRevitExtractor.Core.Raster
         {
             foreach (Point2D p in points)
             {
-                if (!IsFinite(p.X) || !IsFinite(p.Y))
+                if (!p.IsFinite)
                 {
                     throw new ArgumentException($"Non-finite coordinate ({p.X}, {p.Y}) in shape.", paramName);
                 }
@@ -58,7 +58,5 @@ namespace FloorplansRevitExtractor.Core.Raster
 
             return (y * width) + x;
         }
-
-        private static bool IsFinite(double v) => !double.IsNaN(v) && !double.IsInfinity(v);
     }
 }

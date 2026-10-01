@@ -29,7 +29,15 @@ polígonos já em pixels: preenchimento por varredura sem antialiasing (centro
 do pixel, par-ímpar para furos), a ordem de pintura das 10 classes com o
 estêncil de móvel e arco de porta, a máscara de instância (`room_id + 1`) e a
 escrita de PNG modo P e 16 bits (`I;16` no PIL), sem biblioteca de imagem.
-Ainda não estão ligados a nenhum comando do Revit.
+
+A M2 liga metros a pixels: `ViewFrame` (modelo → referencial do CropBox da
+vista, recusando base espelhada), `PixelTransform` (a fórmula do spec, com
+px/m medido no PNG exportado), `OpeningRectangle` (vão = largura × espessura
+da parede, sem estender as pontas) e o contrato `geom/NNNNNN.json`
+(`GeomJsonWriter`/`GeomJsonReader`, leitura estrita, coordenadas sem perda de
+precisão para servir de teste de regressão). `GeomRasterizer` pinta a máscara
+direto de um `GeomDocument`. Nada disso está ligado a um comando do Revit
+ainda.
 
 ## Build
 

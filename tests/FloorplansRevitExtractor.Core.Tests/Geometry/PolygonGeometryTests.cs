@@ -66,6 +66,50 @@ namespace FloorplansRevitExtractor.Core.Tests.Geometry
             centroid.Y.Should().BeApproximately(1.5, 1e-9);
         }
 
+        [Theory]
+        [InlineData(2.0, 1.5, true)]
+        [InlineData(5.0, 1.5, false)]
+        [InlineData(-0.1, 1.5, false)]
+        [InlineData(3.9, 2.9, true)]
+        public void Contains_PointInsideOrOutsideRectangle(double x, double y, bool expected)
+        {
+            PolygonGeometry.Contains(Rectangle4x3, new Point2D(x, y)).Should().Be(expected);
+        }
+
+        [Fact]
+        public void Contains_PointInTheNotchOfAnLShape_IsOutside()
+        {
+            IReadOnlyList<Point2D> lShape = new[]
+            {
+                new Point2D(0, 0), new Point2D(5, 0), new Point2D(5, 2),
+                new Point2D(2, 2), new Point2D(2, 4), new Point2D(0, 4),
+            };
+
+            PolygonGeometry.Contains(lShape, new Point2D(4, 3)).Should().BeFalse();
+            PolygonGeometry.Contains(lShape, new Point2D(1, 3)).Should().BeTrue();
+        }
+
+        [Fact]
+        public void InteriorPoint_UShape_IsInsideEvenThoughTheCentroidIsNot()
+        {
+            IReadOnlyList<Point2D> u = new[]
+            {
+                new Point2D(2, 2), new Point2D(18, 2), new Point2D(18, 18), new Point2D(14, 18),
+                new Point2D(14, 6), new Point2D(6, 6), new Point2D(6, 18), new Point2D(2, 18),
+            };
+
+            PolygonGeometry.Contains(u, PolygonGeometry.Centroid(u)).Should().BeFalse("the premise of this test");
+            PolygonGeometry.Contains(u, PolygonGeometry.InteriorPoint(u)).Should().BeTrue();
+        }
+
+        [Fact]
+        public void InteriorPoint_ThinRotatedSliver_IsInside()
+        {
+            IReadOnlyList<Point2D> sliver = new[] { new Point2D(0, 0), new Point2D(10, 7), new Point2D(10.01, 7.02) };
+
+            PolygonGeometry.Contains(sliver, PolygonGeometry.InteriorPoint(sliver)).Should().BeTrue();
+        }
+
         [Fact]
         public void BBox_ArbitraryPolygon_ReturnsCorrectMinMax()
         {

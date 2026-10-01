@@ -60,6 +60,66 @@ namespace FloorplansRevitExtractor.Core.Geometry
             return new Point2D(cx * factor, cy * factor);
         }
 
+        /// <summary>
+        /// A point guaranteed to be strictly inside the ring, unlike the
+        /// centroid (a U shape's centroid sits in its notch): the middle of
+        /// the widest inside span among horizontal lines taken halfway
+        /// between consecutive vertex heights.
+        /// </summary>
+        public static Point2D InteriorPoint(IReadOnlyList<Point2D> ring)
+        {
+            double[] heights = ring.Select(p => p.Y).Distinct().OrderBy(y => y).ToArray();
+            Point2D? best = null;
+            double bestSpan = 0.0;
+            var crossings = new List<double>();
+
+            for (int k = 0; k + 1 < heights.Length; k++)
+            {
+                double y = (heights[k] + heights[k + 1]) / 2;
+                crossings.Clear();
+                for (int i = 0; i < ring.Count; i++)
+                {
+                    Point2D a = ring[i];
+                    Point2D b = ring[(i + 1) % ring.Count];
+                    if ((a.Y <= y && y < b.Y) || (b.Y <= y && y < a.Y))
+                    {
+                        crossings.Add(a.X + ((y - a.Y) * (b.X - a.X) / (b.Y - a.Y)));
+                    }
+                }
+
+                crossings.Sort();
+                for (int j = 0; j + 1 < crossings.Count; j += 2)
+                {
+                    double span = crossings[j + 1] - crossings[j];
+                    if (span > bestSpan)
+                    {
+                        bestSpan = span;
+                        best = new Point2D((crossings[j] + crossings[j + 1]) / 2, y);
+                    }
+                }
+            }
+
+            return best ?? throw new ArgumentException("Ring has no interior (fewer than 3 distinct points or zero area).", nameof(ring));
+        }
+
+        /// <summary>Even-odd point-in-polygon test; points exactly on an edge may go either way.</summary>
+        public static bool Contains(IReadOnlyList<Point2D> ring, Point2D point)
+        {
+            bool inside = false;
+            for (int i = 0; i < ring.Count; i++)
+            {
+                Point2D a = ring[i];
+                Point2D b = ring[(i + 1) % ring.Count];
+                bool spansY = (a.Y <= point.Y && point.Y < b.Y) || (b.Y <= point.Y && point.Y < a.Y);
+                if (spansY && point.X < a.X + ((point.Y - a.Y) * (b.X - a.X) / (b.Y - a.Y)))
+                {
+                    inside = !inside;
+                }
+            }
+
+            return inside;
+        }
+
         public static (double MinX, double MinY, double MaxX, double MaxY) BBox(IReadOnlyList<Point2D> ring)
         {
             if (ring.Count == 0)
