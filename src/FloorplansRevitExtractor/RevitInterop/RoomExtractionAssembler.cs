@@ -4,16 +4,13 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Architecture;
 using Autodesk.Revit.UI;
-using FloorplansRevitExtractor.Core.Geometry;
 using FloorplansRevitExtractor.Core.Model;
-using FloorplansRevitExtractor.Core.Vocabulary;
 
 namespace FloorplansRevitExtractor.RevitInterop
 {
     internal static class RoomExtractionAssembler
     {
         private const string PluginVersion = "0.1.0";
-        private const double AreaMismatchThreshold = 0.02;
 
         internal static RoomsPreviewDocument Build(Document doc, UIApplication uiApp, Level level)
         {
@@ -57,54 +54,8 @@ namespace FloorplansRevitExtractor.RevitInterop
             Room room,
             int id,
             List<UnmappedRoomName> unmappedNames,
-            List<AreaMismatchWarning> areaWarnings)
-        {
-            (IReadOnlyList<Point2D> outer, IReadOnlyList<IReadOnlyList<Point2D>> holes) =
-                RoomBoundaryExtractor.GetFinishBoundary(room);
-
-            string rawName = room.Name;
-            string normalized = RoomTypeVocabulary.Normalize(rawName);
-            bool mapped = RoomTypeVocabulary.TryMapType(normalized, out string type);
-
-            if (!mapped)
-            {
-                unmappedNames.Add(new UnmappedRoomName(room.Id.Value, rawName, normalized));
-            }
-
-            string zone = mapped ? RoomZoneTable.GetZone(type) : null;
-            int? classId = mapped ? RoomTypeCatalog.GetClassId(type) : (int?)null;
-
-            double area = PolygonGeometry.NetArea(outer, holes);
-            double revitAreaM2 = UnitsConverter.SquareFeetToSquareMeters(room.Area);
-            if (revitAreaM2 > 0)
-            {
-                double diffPct = Math.Abs(area - revitAreaM2) / revitAreaM2;
-                if (diffPct > AreaMismatchThreshold)
-                {
-                    areaWarnings.Add(new AreaMismatchWarning(id, area, revitAreaM2, diffPct));
-                }
-            }
-
-            IReadOnlyList<Point2D> centerLoop = RoomBoundaryExtractor.GetCenterOuterLoopOrNull(room);
-            IReadOnlyList<(double X, double Y, double W, double H)> axisRects =
-                RectilinearDecomposer.TryDecompose(centerLoop);
-
-            return new RoomPreviewRecord
-            {
-                Id = id,
-                Type = type,
-                Name = rawName,
-                Zone = zone,
-                ClassId = classId,
-                Polygon = outer,
-                Holes = holes,
-                AxisRects = axisRects,
-                Area = area,
-                Centroid = PolygonGeometry.Centroid(outer),
-                BBoxM = PolygonGeometry.BBox(outer),
-                RevitAreaM2 = revitAreaM2,
-            };
-        }
+            List<AreaMismatchWarning> areaWarnings) =>
+            RoomRecordBuilder.Build(room, id, p => p, unmappedNames, areaWarnings);
 
         private static ParamsFragment BuildParams(IReadOnlyList<RoomPreviewRecord> records) => new ParamsFragment
         {

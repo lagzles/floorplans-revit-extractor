@@ -31,19 +31,21 @@
   </ItemGroup>
 
   <!--
-    Copies the built addin (and every dependency DLL, including
-    FloorplansRevitExtractor.Core and its transitive packages) into the
-    Revit 2024 addins folder so the plugin loads automatically next time
-    Revit starts. Debug-only: don't touch a machine-wide folder on a
-    Release/CI build.
+    Installs the build into Revit 2024 so the plugin loads next time Revit
+    starts. Revit only reads .addin manifests at the root of the Addins4
+    folder, never in subfolders: the manifest goes to the root and points at
+    the DLLs in the FloorplansRevitExtractor subfolder (every dependency DLL,
+    including FloorplansRevitExtractor.Core and its transitive packages).
+    Debug-only: don't touch a machine-wide folder on a Release/CI build.
   -->
   <Target Name="DeployToRevitAddinsFolder" AfterTargets="Build" Condition="'$(Configuration)' == 'Debug'">
     <ItemGroup>
       <DeployFiles Include="$(OutDir)*.dll" />
-      <DeployFiles Include="$(OutDir)FloorplansRevitExtractor.addin" />
     </ItemGroup>
     <MakeDir Directories="$(RevitAddinsDir)" Condition="!Exists('$(RevitAddinsDir)')" />
     <Copy SourceFiles="@(DeployFiles)" DestinationFolder="$(RevitAddinsDir)" />
+    <Copy SourceFiles="$(OutDir)FloorplansRevitExtractor.addin" DestinationFolder="$(RevitAddinsDir)\.." />
+    <Delete Files="$(RevitAddinsDir)\FloorplansRevitExtractor.addin" />
   </Target>
 
 </Project>

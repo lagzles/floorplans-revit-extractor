@@ -31,6 +31,9 @@ namespace FloorplansRevitExtractor.Core.Raster
 
         public int CountPixels(StructureClass cls) => _histogram[(byte)cls];
 
+        /// <summary>Row-major pixels for whole-image passes inside the Core; never mutated.</summary>
+        internal byte[] Pixels => _pixels;
+
         public byte[] CopyPixels()
         {
             var copy = new byte[_pixels.Length];

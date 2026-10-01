@@ -2,7 +2,7 @@
 <RevitAddIns>
   <AddIn Type="Application">
     <Name>Floorplans Revit Extractor</Name>
-    <Assembly>FloorplansRevitExtractor.dll</Assembly>
+    <Assembly>FloorplansRevitExtractor\FloorplansRevitExtractor.dll</Assembly>
     <AddInId>d752e1da-9efe-40d5-894e-2350e7731506</AddInId>
     <FullClassName>FloorplansRevitExtractor.Application</FullClassName>
     <VendorId>FPRE</VendorId>

@@ -91,7 +91,14 @@ namespace FloorplansRevitExtractor.Core.Tests.Png
 
         private byte[] Unfilter(byte[] raw)
         {
-            int bytesPerPixel = ColorType == 3 ? 1 : BitDepth / 8;
+            int channels = ColorType switch
+            {
+                2 => 3,
+                4 => 2,
+                6 => 4,
+                _ => 1,
+            };
+            int bytesPerPixel = channels * BitDepth / 8;
             int stride = Width * bytesPerPixel;
             if (raw.Length != Height * (stride + 1))
             {

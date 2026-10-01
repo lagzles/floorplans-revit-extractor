@@ -16,6 +16,7 @@ namespace FloorplansRevitExtractor.Core.Png
     {
         private const int PaletteSize = 256;
         private const byte ColorTypeGrayscale = 0;
+        private const byte ColorTypeRgb = 2;
         private const byte ColorTypePalette = 3;
 
         private static readonly byte[] Signature = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
@@ -40,20 +41,33 @@ namespace FloorplansRevitExtractor.Core.Png
                 plte[(i * 3) + 2] = palette[i].B;
             }
 
-            return Encode(width, height, ColorTypePalette, width, indices, plte);
+            return Encode(width, height, ColorTypePalette, width, plte, (y, row) => Buffer.BlockCopy(indices, y * width, row, 0, width));
+        }
+
+        /// <summary>8-bit RGB, three bytes per pixel row-major: the dataset's image format.</summary>
+        public static byte[] EncodeRgb(int width, int height, byte[] rgb)
+        {
+            RequirePixelCount(width, height, rgb.Length / 3);
+            if (rgb.Length % 3 != 0)
+            {
+                throw new ArgumentException($"RGB data length {rgb.Length} is not a multiple of 3.", nameof(rgb));
+            }
+
+            return Encode(width, height, ColorTypeRgb, width * 3, null, (y, row) => Buffer.BlockCopy(rgb, y * width * 3, row, 0, width * 3));
         }
 
         public static byte[] EncodeGray16(int width, int height, ushort[] values)
         {
             RequirePixelCount(width, height, values.Length);
-            var bigEndian = new byte[values.Length * 2];
-            for (int i = 0; i < values.Length; i++)
+            return Encode(width, height, ColorTypeGrayscale, width * 2, null, (y, row) =>
             {
-                bigEndian[i * 2] = (byte)(values[i] >> 8);
-                bigEndian[(i * 2) + 1] = (byte)values[i];
-            }
-
-            return Encode(width, height, ColorTypeGrayscale, width * 2, bigEndian, null);
+                int start = y * width;
+                for (int x = 0; x < width; x++)
+                {
+                    row[x * 2] = (byte)(values[start + x] >> 8);
+                    row[(x * 2) + 1] = (byte)values[start + x];
+                }
+            });
         }
 
         private static void RequirePixelCount(int width, int height, int actual)
@@ -69,7 +83,11 @@ namespace FloorplansRevitExtractor.Core.Png
             }
         }
 
-        private static byte[] Encode(int width, int height, byte colorType, int stride, byte[] data, byte[]? plte)
+        /// <summary>
+        /// Rows are filled one at a time and streamed through deflate with the
+        /// filter byte in front, so no full-image copy is made.
+        /// </summary>
+        private static byte[] Encode(int width, int height, byte colorType, int stride, byte[]? plte, Action<int, byte[]> fillRow)
         {
             byte bitDepth = colorType == ColorTypeGrayscale ? (byte)16 : (byte)8;
             var ihdr = new byte[13];
@@ -86,36 +104,34 @@ namespace FloorplansRevitExtractor.Core.Png
                 WriteChunk(output, "PLTE", plte);
             }
 
-            WriteChunk(output, "IDAT", ZlibCompress(AddFilterBytes(data, stride, height)));
+            WriteChunk(output, "IDAT", ZlibCompressRows(height, stride, fillRow));
             WriteChunk(output, "IEND", Array.Empty<byte>());
             return output.ToArray();
         }
 
-        private static byte[] AddFilterBytes(byte[] data, int stride, int height)
-        {
-            var filtered = new byte[height * (stride + 1)];
-            for (int y = 0; y < height; y++)
-            {
-                Buffer.BlockCopy(data, y * stride, filtered, (y * (stride + 1)) + 1, stride);
-            }
-
-            return filtered;
-        }
-
         /// <summary>netstandard2.0 has raw deflate only; zlib adds a 2-byte header and an Adler-32 trailer.</summary>
-        private static byte[] ZlibCompress(byte[] raw)
+        private static byte[] ZlibCompressRows(int height, int stride, Action<int, byte[]> fillRow)
         {
             using var output = new MemoryStream();
             output.WriteByte(0x78);
             output.WriteByte(0x9C);
+            var adler = new Checksums.Adler32Accumulator();
+            var line = new byte[stride + 1]; // filter byte 0, then the row
+            var row = new byte[stride];
             using (var deflate = new DeflateStream(output, CompressionLevel.Optimal, leaveOpen: true))
             {
-                deflate.Write(raw, 0, raw.Length);
+                for (int y = 0; y < height; y++)
+                {
+                    fillRow(y, row);
+                    Buffer.BlockCopy(row, 0, line, 1, stride);
+                    deflate.Write(line, 0, line.Length);
+                    adler.Update(line, 0, line.Length);
+                }
             }
 
-            var adler = new byte[4];
-            WriteInt32BigEndian(adler, 0, (int)Checksums.Adler32(raw));
-            output.Write(adler, 0, adler.Length);
+            var trailer = new byte[4];
+            WriteInt32BigEndian(trailer, 0, (int)adler.Value);
+            output.Write(trailer, 0, trailer.Length);
             return output.ToArray();
         }
 

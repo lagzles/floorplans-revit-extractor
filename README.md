@@ -49,6 +49,34 @@ vértices (4 rect, 6 L, 8 T, senão U), `exterior` = porta em parede externa,
 `room_a` sempre preenchido. As chaves de `params` e `render_style` vêm do v4;
 trocar quando houver um label do v7.
 
+### Exportar vista ativa (M4, primeira entrega do spec v2)
+
+Botão **"Extração" → "Exportar vista ativa"**: transforma a planta baixa
+aberta numa amostra de treino, por enquanto só com ambientes e paredes
+cortadas (portas, janelas, pilares, escadas, móveis, vazios e arcos vêm nos
+próximos incrementos).
+
+- A vista precisa de **região de recorte ativa e retangular**; com o recorte
+  de anotação ativo, cota e texto de fora não entram pela metade.
+- A imagem sai a **48 px/m** (faixa típica do spec). O exportador mede o PNG
+  gerado para achar a região que ele cobre; se nenhuma bater com 1 px de
+  tolerância, para e mostra as medidas, sem gravar nada desalinhado.
+- O lote vai para `Documentos\floorplans-dataset\`: `images/`,
+  `masks_semantic/`, `masks_instance/`, `labels/` (os quatro do dataset),
+  `geom/`, `qa/` (imagem + máscara a 40%, para conferir o alinhamento),
+  `reports/`, `rejected/`, `manifest.json`, `classes.json`, `registry.json`
+  e `review.json`. Reexportar a mesma vista reaproveita o id (900001 em
+  diante) e substitui a amostra.
+- O Revit enquadra a imagem exportada pela extensão do que está desenhado.
+  Para essa extensão ser o recorte, o comando mostra a região de recorte
+  dentro de um grupo de transação que sofre **rollback** logo após a
+  exportação: o modelo termina exatamente como estava, e o Revit não pede
+  para salvar nada. As bordas do recorte aparecem como uma moldura fina na
+  imagem.
+- A máscara é cortada no recorte do modelo, como o Revit corta os gráficos.
+- Toda exportação deixa em `debug/` o PNG cru do Revit e as medidas usadas
+  para alinhar (`view_<id>_export.png`, `view_<id>_medidas.txt`).
+
 ## Build
 
 Alvo: Revit 2024 (.NET Framework 4.8). Não é necessário ter o Revit
@@ -59,13 +87,15 @@ instalado para compilar — o build usa o pacote NuGet
 dotnet build
 ```
 
-Em build `Debug`, o target `DeployToRevitAddinsFolder` copia
-`FloorplansRevitExtractor.addin` e todas as DLLs de saída (o plugin,
-`FloorplansRevitExtractor.Core.dll` e as dependências transitivas do
-`System.Text.Json`) para:
+Em build `Debug`, o target `DeployToRevitAddinsFolder` copia todas as DLLs
+de saída (o plugin, `FloorplansRevitExtractor.Core.dll` e as dependências
+transitivas do `System.Text.Json`) para a subpasta, e o manifesto
+`FloorplansRevitExtractor.addin` para a raiz — o Revit só lê manifestos na
+raiz de `Addins\2024`, e o manifesto aponta para a DLL na subpasta:
 
 ```
-%ProgramData%\Autodesk\Revit\Addins\2024\FloorplansRevitExtractor\
+%ProgramData%\Autodesk\Revit\Addins\2024\FloorplansRevitExtractor.addin
+%ProgramData%\Autodesk\Revit\Addins\2024\FloorplansRevitExtractor\*.dll
 ```
 
 Depois de instalar o Revit 2024 e abrir um projeto, o plugin carrega

@@ -30,6 +30,12 @@ namespace FloorplansRevitExtractor
                 assemblyPath,
                 typeof(ExtractRoomsPreviewCommand).FullName));
 
+            extractionPanel.AddItem(new PushButtonData(
+                "ExportActiveView",
+                "Exportar\nvista ativa",
+                assemblyPath,
+                typeof(ExportViewCommand).FullName));
+
             return Result.Succeeded;
         }
 

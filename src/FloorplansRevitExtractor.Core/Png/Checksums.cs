@@ -31,22 +31,35 @@ namespace FloorplansRevitExtractor.Core.Png
 
         internal static uint Adler32(byte[] data)
         {
-            uint a = 1;
-            uint b = 0;
-            for (int blockStart = 0; blockStart < data.Length; blockStart += Adler32BlockSize)
+            var accumulator = new Adler32Accumulator();
+            accumulator.Update(data, 0, data.Length);
+            return accumulator.Value;
+        }
+
+        /// <summary>Adler-32 over data that arrives in pieces (zlib's NMAX batching).</summary>
+        internal sealed class Adler32Accumulator
+        {
+            private uint _a = 1;
+            private uint _b;
+
+            internal uint Value => (_b << 16) | _a;
+
+            internal void Update(byte[] data, int offset, int count)
             {
-                int blockEnd = Math.Min(data.Length, blockStart + Adler32BlockSize);
-                for (int i = blockStart; i < blockEnd; i++)
+                int end = offset + count;
+                for (int blockStart = offset; blockStart < end; blockStart += Adler32BlockSize)
                 {
-                    a += data[i];
-                    b += a;
+                    int blockEnd = Math.Min(end, blockStart + Adler32BlockSize);
+                    for (int i = blockStart; i < blockEnd; i++)
+                    {
+                        _a += data[i];
+                        _b += _a;
+                    }
+
+                    _a %= Adler32Modulus;
+                    _b %= Adler32Modulus;
                 }
-
-                a %= Adler32Modulus;
-                b %= Adler32Modulus;
             }
-
-            return (b << 16) | a;
         }
 
         private static uint[] BuildCrcTable()
