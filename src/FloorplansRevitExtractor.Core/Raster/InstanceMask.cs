@@ -33,6 +33,9 @@ namespace FloorplansRevitExtractor.Core.Raster
 
         public ushort this[int x, int y] => _pixels[PixelSpans.IndexOf(x, y, Width, Height)];
 
+        /// <summary>Row-major pixels for whole-image passes inside the Core; never mutated.</summary>
+        internal ushort[] Pixels => _pixels;
+
         /// <summary>The label's area_px: real pixel count, not polygon area.</summary>
         public int CountPixels(ushort instanceId) => _histogram[instanceId];
 
