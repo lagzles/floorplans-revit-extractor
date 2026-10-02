@@ -30,7 +30,8 @@ namespace FloorplansRevitExtractor.ViewExport
             ViewFrame frame,
             Transform cropTransform,
             IReadOnlyList<ViewRegion> imageRegions,
-            double cutPlaneZFeet)
+            double cutPlaneZFeet,
+            double bottomZFeet)
         {
             View = view;
             Level = level;
@@ -39,6 +40,7 @@ namespace FloorplansRevitExtractor.ViewExport
             CropTransform = cropTransform;
             ImageRegions = imageRegions;
             CutPlaneZFeet = cutPlaneZFeet;
+            BottomZFeet = bottomZFeet;
         }
 
         internal ViewPlan View { get; }
@@ -64,6 +66,13 @@ namespace FloorplansRevitExtractor.ViewExport
 
         /// <summary>Absolute height of the cut plane, internal units (feet).</summary>
         internal double CutPlaneZFeet { get; }
+
+        /// <summary>
+        /// Absolute height of the view range's bottom: what lies between it and
+        /// the cut plane is drawn in projection (furniture, stairs, floor
+        /// openings), whatever level each block of the plan sits on.
+        /// </summary>
+        internal double BottomZFeet { get; }
 
         internal double CutPlaneM => UnitsConverter.ToMeters(CutPlaneZFeet - Level.ProjectElevation);
 
@@ -97,7 +106,7 @@ namespace FloorplansRevitExtractor.ViewExport
                 new Vector2D(t.BasisX.X, t.BasisX.Y),
                 new Vector2D(t.BasisY.X, t.BasisY.Y));
 
-            return new ViewSetup(view, level, phaseId, frame, t, ImageRegionsOf(view, crop, shape), CutPlaneZ(view, level));
+            return new ViewSetup(view, level, phaseId, frame, t, ImageRegionsOf(view, crop, shape), PlaneZ(view, level, PlanViewPlane.CutPlane), PlaneZ(view, level, PlanViewPlane.BottomClipPlane));
         }
 
         /// <summary>
@@ -150,12 +159,13 @@ namespace FloorplansRevitExtractor.ViewExport
             return new[] { annotation, model };
         }
 
-        private static double CutPlaneZ(ViewPlan view, Level viewLevel)
+        /// <summary>Absolute height (feet) of one plane of the view range: its level plus its offset.</summary>
+        private static double PlaneZ(ViewPlan view, Level viewLevel, PlanViewPlane plane)
         {
             PlanViewRange range = view.GetViewRange();
-            ElementId levelId = range.GetLevelId(PlanViewPlane.CutPlane);
-            Level cutLevel = view.Document.GetElement(levelId) as Level ?? viewLevel;
-            return cutLevel.ProjectElevation + range.GetOffset(PlanViewPlane.CutPlane);
+            ElementId levelId = range.GetLevelId(plane);
+            Level planeLevel = view.Document.GetElement(levelId) as Level ?? viewLevel;
+            return planeLevel.ProjectElevation + range.GetOffset(plane);
         }
     }
 

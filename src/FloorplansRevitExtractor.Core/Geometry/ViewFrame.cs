@@ -40,6 +40,10 @@ namespace FloorplansRevitExtractor.Core.Geometry
             return new Point2D(offset.Dot(BasisX), offset.Dot(BasisY));
         }
 
+        /// <summary>A direction (no origin shift), e.g. a wall's tangent, in the view frame.</summary>
+        public Vector2D ToViewDirection(Vector2D modelDirection) =>
+            new Vector2D(modelDirection.Dot(BasisX), modelDirection.Dot(BasisY));
+
         public Point2D ToModel(Point2D viewM) => new Point2D(
             OriginM.X + (viewM.X * BasisX.X) + (viewM.Y * BasisY.X),
             OriginM.Y + (viewM.X * BasisX.Y) + (viewM.Y * BasisY.Y));

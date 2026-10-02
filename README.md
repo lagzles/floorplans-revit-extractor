@@ -52,9 +52,21 @@ trocar quando houver um label do v7.
 ### Exportar vista ativa (M4, primeira entrega do spec v2)
 
 Botão **"Extração" → "Exportar vista ativa"**: transforma a planta baixa
-aberta numa amostra de treino, por enquanto só com ambientes e paredes
-cortadas (portas, janelas, pilares, escadas, móveis, vazios e arcos vêm nos
-próximos incrementos).
+aberta numa amostra de treino com as 10 classes do spec v2:
+
+| classe | de onde vem |
+|---|---|
+| 1 room | ambientes cortados pelo plano de corte (qualquer nível), face acabada |
+| 2 wall | seção da parede no plano de corte (paredes-cortina ficam fora: pergunta em aberto) |
+| 3 door / 4 window | retângulo largura do vão × espessura da parede, no eixo da parede |
+| 5 pillar | seção do pilar no plano de corte, forma real |
+| 6 stair | projeção de lances e patamares; ambiente "escada"/"stair" |
+| 7 furniture | caixa da família girada com a instância (mobiliário, casework, louças, equipamentos) |
+| 8 swing | arco e folha da porta desenhados na vista, traço de 4 cm, só sobre piso |
+| 9 void | shafts e furos de laje; ambiente "elevador"/"shaft" |
+
+Ainda fora: piso externo (deck, calçada), rampas, escadas por esboço e
+elementos de modelos vinculados — cada caso aparece em `review.json`.
 
 - A vista precisa de **região de recorte ativa e retangular**; com o recorte
   de anotação ativo, cota e texto de fora não entram pela metade.
@@ -87,16 +99,19 @@ instalado para compilar — o build usa o pacote NuGet
 dotnet build
 ```
 
-Em build `Debug`, o target `DeployToRevitAddinsFolder` copia todas as DLLs
-de saída (o plugin, `FloorplansRevitExtractor.Core.dll` e as dependências
-transitivas do `System.Text.Json`) para a subpasta, e o manifesto
-`FloorplansRevitExtractor.addin` para a raiz — o Revit só lê manifestos na
-raiz de `Addins\2024`, e o manifesto aponta para a DLL na subpasta:
+O Revit carrega o plugin direto da saída do build, por um manifesto na
+pasta de add-ins do usuário (o Revit só lê manifestos na raiz dessa pasta):
 
 ```
-%ProgramData%\Autodesk\Revit\Addins\2024\FloorplansRevitExtractor.addin
-%ProgramData%\Autodesk\Revit\Addins\2024\FloorplansRevitExtractor\*.dll
+%AppData%\Autodesk\Revit\Addins\2024\FloorplansRevitExtractor.addin
 ```
+
+com `<Assembly>` apontando para o caminho completo de
+`src\FloorplansRevitExtractor\bin\Debug\FloorplansRevitExtractor.dll`. As
+dependências (`FloorplansRevitExtractor.Core.dll` e as do `System.Text.Json`)
+ficam na mesma pasta. Não crie um segundo manifesto com o mesmo AddInId: o
+Revit acusa conflito. Com o Revit aberto, o build falha porque a DLL fica
+travada.
 
 Depois de instalar o Revit 2024 e abrir um projeto, o plugin carrega
 automaticamente (não precisa copiar nada manualmente).

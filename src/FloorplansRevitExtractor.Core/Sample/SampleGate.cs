@@ -28,6 +28,9 @@ namespace FloorplansRevitExtractor.Core.Sample
         /// <summary>analisar_dataset.py treats a class as wall when more than this share of it is on ink.</summary>
         public const double WallInkShare = 0.55;
 
+        /// <summary>Spec v2 count check: blobs within 5% of the elements extracted.</summary>
+        private const double CountTolerance = 0.05;
+
         // Spec v2, whole sheet: outside these the sample goes to review, not out.
         private const double MinWallFraction = 0.008;
         private const double MaxWallFraction = 0.12;
@@ -40,7 +43,8 @@ namespace FloorplansRevitExtractor.Core.Sample
             InstanceMask instance,
             SampleLabel label,
             GeomDocument geom,
-            IReadOnlyList<string> notes)
+            IReadOnlyList<string> notes,
+            IReadOnlyDictionary<StructureClass, int>? expectedCounts = null)
         {
             var rejections = new List<GateFinding>();
             var review = new List<GateFinding>();
@@ -66,6 +70,7 @@ namespace FloorplansRevitExtractor.Core.Sample
             CheckRoundtrip(label, rejections);
             CheckInk(ink, rejections, review);
             CheckDistribution(metrics, label, review);
+            CheckCounts(semantic, expectedCounts, review);
             AddReviewNotes(label, geom, notes, review);
             return new GateResult(rejections, review, metrics);
         }
@@ -186,6 +191,30 @@ namespace FloorplansRevitExtractor.Core.Sample
                 review.Add(new GateFinding(
                     "distribuicao",
                     $"Porta + janela ocupam {metrics.OpeningFraction:P2} da imagem (faixa: {MinOpeningFraction:P1} a {MaxOpeningFraction:P0})."));
+            }
+        }
+
+        /// <summary>
+        /// Openings that touch merge into one blob and tiny elements vanish when
+        /// rasterized, so a count off by more than 5% goes to review, not out.
+        /// </summary>
+        private static void CheckCounts(SemanticMask semantic, IReadOnlyDictionary<StructureClass, int>? expected, List<GateFinding> review)
+        {
+            if (expected == null)
+            {
+                return;
+            }
+
+            foreach (KeyValuePair<StructureClass, int> entry in expected.OrderBy(e => e.Key))
+            {
+                int blobs = BlobCounter.Count(semantic, entry.Key);
+                int allowed = (int)Math.Floor(entry.Value * CountTolerance);
+                if (Math.Abs(blobs - entry.Value) > allowed)
+                {
+                    review.Add(new GateFinding(
+                        "contagem",
+                        $"{entry.Value} elemento(s) de {StructureClassNames.ToName(entry.Key)} extraído(s), {blobs} mancha(s) na máscara."));
+                }
             }
         }
 

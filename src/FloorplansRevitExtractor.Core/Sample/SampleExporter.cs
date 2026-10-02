@@ -91,7 +91,7 @@ namespace FloorplansRevitExtractor.Core.Sample
                 InstanceMask = instance,
                 File = SampleFiles.FileName(id, SampleFiles.ImageExtension),
             });
-            GateResult gate = SampleGate.Check(image, semantic, instance, label, request.Geom, request.ReviewNotes);
+            GateResult gate = SampleGate.Check(image, semantic, instance, label, request.Geom, request.ReviewNotes, request.ExpectedCounts);
             return new Built(image, semantic, instance, label, gate);
         }
 

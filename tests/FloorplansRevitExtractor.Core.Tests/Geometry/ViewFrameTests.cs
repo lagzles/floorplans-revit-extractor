@@ -46,6 +46,19 @@ namespace FloorplansRevitExtractor.Core.Tests.Geometry
         }
 
         [Fact]
+        public void ToViewDirection_RotatesWithoutTheOriginShift()
+        {
+            double c = Math.Cos(Math.PI / 6);
+            double s = Math.Sin(Math.PI / 6);
+            var frame = new ViewFrame(new Point2D(100, -50), new Vector2D(c, s), new Vector2D(-s, c));
+
+            Vector2D along = frame.ToViewDirection(new Vector2D(c, s));
+
+            along.X.Should().BeApproximately(1, Tolerance);
+            along.Y.Should().BeApproximately(0, Tolerance);
+        }
+
+        [Fact]
         public void ToModel_IsTheInverseOfToView()
         {
             double c = Math.Cos(1.1);

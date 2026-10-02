@@ -40,6 +40,43 @@ namespace FloorplansRevitExtractor.Core.Tests.Vocabulary
             type.Should().Be("living_room");
         }
 
+        // English names (Autodesk sample models, foreign offices) map to the same 18 types.
+        [Theory]
+        [InlineData("Stair S1", "stairs")]
+        [InlineData("Elevator E1", "void")] // spec v2: elevator shaft is void, the cab is not drawn
+        [InlineData("Lift 2", "void")]
+        [InlineData("Shaft", "void")]
+        [InlineData("Residential Lobby 106", "hall")]
+        [InlineData("Café Kitchen 102", "kitchen")]
+        [InlineData("Commercial/Retail 105", "office")] // as LOJA and SALA COMERCIAL
+        [InlineData("Master Bedroom", "bedroom")]
+        [InlineData("Restroom 3", "bathroom")]
+        [InlineData("Living Room", "living_room")]
+        [InlineData("Dining", "dining_room")]
+        [InlineData("Laundry", "laundry")]
+        [InlineData("Corridor 2", "corridor")]
+        [InlineData("Hallway", "corridor")]
+        [InlineData("Balcony", "terrace")]
+        [InlineData("Pocket Park 104", "patio")]
+        [InlineData("Walk-in Closet", "closet")]
+        [InlineData("Outdoor Covered Dining 103", "terrace")] // an outdoor covered area, not a dining room
+        [InlineData("Parking 2", "parking")] // PARKING wins over PARK
+        public void TryMapType_EnglishNames_MapToTheSameTypes(string raw, string expected)
+        {
+            bool mapped = RoomTypeVocabulary.TryMapType(RoomTypeVocabulary.Normalize(raw), out string? type);
+
+            mapped.Should().BeTrue(raw);
+            type.Should().Be(expected);
+        }
+
+        [Theory]
+        [InlineData("Café 101")]
+        [InlineData("Utility 107")]
+        public void TryMapType_EnglishNamesWithoutAClearType_StayUnmapped(string raw)
+        {
+            RoomTypeVocabulary.TryMapType(RoomTypeVocabulary.Normalize(raw), out _).Should().BeFalse(raw);
+        }
+
         [Fact]
         public void TryMapType_UnmappedName_ReturnsFalse_NeverDefaultsToOffice()
         {

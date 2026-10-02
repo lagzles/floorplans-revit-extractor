@@ -108,6 +108,34 @@ namespace FloorplansRevitExtractor.Core.Vocabulary
             ("POCO", "void"),
             ("DUTO", "void"),
             ("PRUMADA", "void"),
+
+            // English names (Autodesk sample models, foreign offices), same 18 types.
+            ("BEDROOM", "bedroom"),
+            ("BATHROOM", "bathroom"),
+            ("RESTROOM", "bathroom"),
+            ("TOILET", "bathroom"),
+            ("POWDER", "powder"),
+            ("KITCHEN", "kitchen"),
+            ("LAUNDRY", "laundry"),
+            ("DINING", "dining_room"),
+            ("GARAGE", "garage"),
+            ("PARKING", "parking"),
+            ("CORRIDOR", "corridor"),
+            ("HALLWAY", "corridor"),
+            ("LOBBY", "hall"),
+            ("STAIR", "stairs"),
+            ("OUTDOOR", "terrace"),
+            ("BALCONY", "terrace"),
+            ("TERRACE", "terrace"),
+            ("PORCH", "terrace"),
+            ("GARDEN", "patio"),
+            ("COURTYARD", "patio"),
+            ("PARK", "patio"),
+            ("PANTRY", "pantry"),
+            ("OFFICE", "office"),
+            ("RETAIL", "office"),
+            ("ELEVATOR", "void"), // spec v2: elevator shaft is void; the cab is not drawn
+            ("LIFT", "void"),
         };
     }
 }

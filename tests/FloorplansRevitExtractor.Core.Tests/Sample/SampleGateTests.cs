@@ -112,6 +112,39 @@ namespace FloorplansRevitExtractor.Core.Tests.Sample
         }
 
         [Fact]
+        public void Check_ElementCountWithinFivePercentOfTheBlobs_Passes()
+        {
+            // The test plan has 5 wall pieces; one connected wall outline in the mask.
+            GeomDocument geom = Geom() with
+            {
+                Elements = Geom().Elements.Concat(new[]
+                {
+                    GeomElement.Filled(StructureClass.Pillar, 20, new[] { Rect(3, 3, 3.3, 3.3) }),
+                    GeomElement.Filled(StructureClass.Pillar, 21, new[] { Rect(5, 3, 5.3, 3.3) }),
+                }).ToArray(),
+            };
+
+            GateResult gate = Gate(Request(geom: geom, image: ImagePng(geom)) with
+            {
+                ExpectedCounts = new Dictionary<StructureClass, int> { [StructureClass.Pillar] = 2 },
+            });
+
+            gate.Review.Should().NotContain(f => f.Check == "contagem");
+        }
+
+        [Fact]
+        public void Check_ElementsMissingFromTheMask_AreFlaggedForReview()
+        {
+            // Three doors were extracted, but the mask has none.
+            GateResult gate = Gate(Request() with
+            {
+                ExpectedCounts = new Dictionary<StructureClass, int> { [StructureClass.Door] = 3 },
+            });
+
+            gate.Review.Should().ContainSingle(f => f.Check == "contagem").Which.Message.Should().Contain("3").And.Contain("0");
+        }
+
+        [Fact]
         public void Check_UnmappedRoomName_IsFlaggedForReview()
         {
             var rooms = new[] { LabelTestData.Room(0, null, 1.2, 1.2, 7.9, 8.8, "DEPÓSITO"), LabelTestData.Room(1, "living_room", 8.1, 1.2, 14.8, 8.8) };

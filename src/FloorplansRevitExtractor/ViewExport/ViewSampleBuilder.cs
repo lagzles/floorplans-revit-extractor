@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using FloorplansRevitExtractor.Core.Geometry;
 using FloorplansRevitExtractor.Core.Label;
 using FloorplansRevitExtractor.Core.Model;
+using FloorplansRevitExtractor.Core.Raster;
 using FloorplansRevitExtractor.Core.Sample;
 using FloorplansRevitExtractor.RevitInterop;
 
@@ -13,9 +14,9 @@ namespace FloorplansRevitExtractor.ViewExport
 {
     /// <summary>
     /// Reads one plan view into a <see cref="SampleRequest"/>: exports the
-    /// image, measures its transform, and extracts rooms and cut walls (the
-    /// first delivery of spec v2: room and wall; doors, windows, pillars,
-    /// stairs, furniture, voids and swings come in later increments).
+    /// image, measures its transform, and extracts every mask class of spec
+    /// v2: rooms, stairs, voids, cut walls, pillars, furniture, doors, windows
+    /// and door swings.
     /// </summary>
     internal static class ViewSampleBuilder
     {
@@ -34,6 +35,19 @@ namespace FloorplansRevitExtractor.ViewExport
             ExportedImage image = ViewImageExporter.Export(doc, setup, targetPxPerM, debugFolder);
             RoomReading rooms = ViewRoomReader.Read(doc, setup, setup.ModelRegion);
             WallReading walls = WallSectionReader.Read(doc, setup, image.Transform.PxPerM);
+            OpeningReading openings = OpeningReader.Read(doc, setup, rooms.RecordIdByRoom);
+            PillarReading pillars = PillarReader.Read(doc, setup);
+            StairReading stairs = StairReader.Read(doc, setup);
+            VoidReading voids = VoidReader.Read(doc, setup);
+            FurnitureReading furniture = FurnitureReader.Read(doc, setup, rooms.RecordIdByRoom);
+            IReadOnlyList<GeomElement> elements = rooms.Elements
+                .Concat(stairs.Elements)
+                .Concat(voids.Elements)
+                .Concat(walls.Elements)
+                .Concat(pillars.Elements)
+                .Concat(furniture.Elements)
+                .Concat(openings.Elements)
+                .ToList();
             ViewPlan view = setup.View;
             string docGuid = doc.ProjectInformation.UniqueId;
 
@@ -41,8 +55,14 @@ namespace FloorplansRevitExtractor.ViewExport
             {
                 View = new GeomView(view.Id.Value, view.Name, view.Scale, setup.CutPlaneM),
                 Transform = image.Transform,
-                Elements = rooms.Elements.Concat(walls.Elements).ToList(),
-                Warnings = walls.Warnings,
+                Elements = elements,
+                Warnings = walls.Warnings
+                    .Concat(openings.Warnings)
+                    .Concat(pillars.Warnings)
+                    .Concat(stairs.Warnings)
+                    .Concat(voids.Warnings)
+                    .Concat(furniture.Warnings)
+                    .ToList(),
             };
 
             var request = new SampleRequest
@@ -78,11 +98,21 @@ namespace FloorplansRevitExtractor.ViewExport
                     Outline = Array.Empty<Point2D>(),
                 },
                 Rooms = rooms.Records,
-                Doors = Array.Empty<DoorRecord>(),
-                Windows = Array.Empty<WindowRecord>(),
-                Furniture = Array.Empty<FurnitureRecord>(),
+                Doors = openings.Doors,
+                Windows = openings.Windows,
+                Furniture = furniture.Records,
                 RenderStyle = RenderStyle.Empty.With("scale_den", view.Scale).With("lang", "pt"),
-                ReviewNotes = rooms.Notes.Concat(walls.Notes).Concat(LinkNotes(doc, view)).ToList(),
+                ReviewNotes = rooms.Notes
+                    .Concat(walls.Notes)
+                    .Concat(openings.Notes)
+                    .Concat(pillars.Notes)
+                    .Concat(stairs.Notes)
+                    .Concat(voids.Notes)
+                    .Concat(furniture.Notes)
+                    .Concat(LinkNotes(doc, view))
+                    .ToList(),
+                ExpectedCounts = new[] { StructureClass.Door, StructureClass.Window, StructureClass.Pillar }
+                    .ToDictionary(cls => cls, cls => elements.Count(e => e.Class == cls)),
             };
 
             return (request, image.Diagnostics);
