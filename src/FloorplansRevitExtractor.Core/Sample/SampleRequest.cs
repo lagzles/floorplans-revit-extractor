@@ -36,12 +36,5 @@ namespace FloorplansRevitExtractor.Core.Sample
 
         /// <summary>Things a person should look at, from the extraction (links ignored, curtain walls skipped...).</summary>
         public required IReadOnlyList<string> ReviewNotes { get; init; }
-
-        /// <summary>
-        /// How many doors, windows and pillars were extracted (spec v2 count
-        /// check: against the blobs in the mask, within 5%). Classes left out
-        /// are not checked.
-        /// </summary>
-        public IReadOnlyDictionary<StructureClass, int> ExpectedCounts { get; init; } = new Dictionary<StructureClass, int>();
     }
 }

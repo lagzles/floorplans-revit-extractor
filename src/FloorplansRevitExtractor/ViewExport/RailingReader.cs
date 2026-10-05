@@ -79,7 +79,7 @@ namespace FloorplansRevitExtractor.ViewExport
         private static bool Shown(Element railing, ViewSetup setup)
         {
             BoundingBoxXYZ box = railing.get_BoundingBox(null);
-            return box != null && box.Min.Z <= setup.CutPlaneZFeet && box.Max.Z >= setup.BottomZFeet;
+            return box != null && box.Min.Z <= setup.CutZFor(railing) && box.Max.Z >= setup.BottomZFor(railing);
         }
 
         /// <summary>A terrace room on either side of the middle of the path, and no gallery.</summary>

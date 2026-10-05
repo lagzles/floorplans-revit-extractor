@@ -27,7 +27,8 @@ namespace FloorplansRevitExtractor.ViewExport
             ViewSetup setup,
             List<GeomWarning> warnings)
         {
-            var cutPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisZ.Negate(), new XYZ(0, 0, setup.CutPlaneZFeet));
+            double cutZ = setup.CutZFor(element);
+            var cutPlane = Plane.CreateByNormalAndOrigin(XYZ.BasisZ.Negate(), new XYZ(0, 0, cutZ));
             var rings = new List<IReadOnlyList<Point2D>>();
             var options = new Options { ComputeReferences = false, IncludeNonVisibleObjects = false, DetailLevel = ViewDetailLevel.Fine };
             foreach (Solid solid in Solids(element.get_Geometry(options)))
@@ -51,7 +52,7 @@ namespace FloorplansRevitExtractor.ViewExport
                 foreach (PlanarFace face in below.Faces.OfType<PlanarFace>())
                 {
                     bool isSection = face.FaceNormal.Z > UpFacingZ
-                        && Math.Abs(face.Origin.Z - setup.CutPlaneZFeet) < FaceHeightToleranceFeet;
+                        && Math.Abs(face.Origin.Z - cutZ) < FaceHeightToleranceFeet;
                     if (isSection)
                     {
                         rings.AddRange(face.GetEdgesAsCurveLoops().Select(loop => Ring(loop, setup)));

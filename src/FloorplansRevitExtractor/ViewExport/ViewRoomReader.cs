@@ -52,7 +52,7 @@ namespace FloorplansRevitExtractor.ViewExport
                 .OfCategory(BuiltInCategory.OST_Rooms)
                 .WhereElementIsNotElementType()
                 .Cast<Room>()
-                .Where(r => CutByPlane(r, setup.CutPlaneZFeet))
+                .Where(r => CutByPlane(r, setup.CutZFor(r)))
                 .OrderBy(r => r.Id.Value)
                 .ToList();
 

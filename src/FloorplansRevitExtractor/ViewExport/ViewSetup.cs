@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.DB.Architecture;
 using FloorplansRevitExtractor.Core.Geometry;
 using FloorplansRevitExtractor.RevitInterop;
 
@@ -31,8 +33,10 @@ namespace FloorplansRevitExtractor.ViewExport
             Transform cropTransform,
             IReadOnlyList<ViewRegion> imageRegions,
             double cutPlaneZFeet,
-            double bottomZFeet)
+            double bottomZFeet,
+            double sameFloorLimitZFeet)
         {
+            SameFloorLimitZFeet = sameFloorLimitZFeet;
             View = view;
             Level = level;
             PhaseId = phaseId;
@@ -76,6 +80,69 @@ namespace FloorplansRevitExtractor.ViewExport
 
         internal double CutPlaneM => UnitsConverter.ToMeters(CutPlaneZFeet - Level.ProjectElevation);
 
+        /// <summary>
+        /// Levels above the view's level but below this height belong to the
+        /// same floor: the blocks of a building on a slope ("L1 - Block 35",
+        /// "L1 - Block 43"). The view range's top when it is a level, else the
+        /// cut plane plus its own offset again.
+        /// </summary>
+        internal double SameFloorLimitZFeet { get; }
+
+        private readonly Dictionary<long, double> _shiftByLevel = new Dictionary<long, double>();
+
+        /// <summary>The same-floor levels whose elements were cut at their own height, for the review notes.</summary>
+        internal IReadOnlyCollection<string> ShiftedLevelNames =>
+            _shiftByLevel.Where(p => p.Value != 0).Select(p => View.Document.GetElement(new ElementId(p.Key))?.Name).Where(n => n != null).ToList();
+
+        /// <summary>
+        /// Revit draws each block of a split-level floor cut at the view's cut
+        /// offset above the block's own level (a plan region's view range, which
+        /// the API does not expose). An element on such a level is cut there.
+        /// </summary>
+        internal double CutZFor(Element element) => CutPlaneZFeet + LevelShiftFeet(element);
+
+        internal double BottomZFor(Element element) => BottomZFeet + LevelShiftFeet(element);
+
+        private double LevelShiftFeet(Element element)
+        {
+            ElementId levelId = LevelOf(element);
+            if (levelId == ElementId.InvalidElementId || levelId == Level.Id)
+            {
+                return 0;
+            }
+
+            if (!_shiftByLevel.TryGetValue(levelId.Value, out double shift))
+            {
+                shift = 0;
+                if (View.Document.GetElement(levelId) is Level level)
+                {
+                    double above = level.ProjectElevation - Level.ProjectElevation;
+                    shift = above > 0 && level.ProjectElevation < SameFloorLimitZFeet ? above : 0;
+                }
+
+                _shiftByLevel[levelId.Value] = shift;
+            }
+
+            return shift;
+        }
+
+        private static ElementId LevelOf(Element element)
+        {
+            switch (element)
+            {
+                case StairsRun run:
+                    return LevelOf(run.GetStairs());
+                case StairsLanding landing:
+                    return LevelOf(landing.GetStairs());
+                case Stairs stairs:
+                    return stairs.get_Parameter(BuiltInParameter.STAIRS_BASE_LEVEL_PARAM)?.AsElementId() ?? ElementId.InvalidElementId;
+                case FamilyInstance instance when instance.LevelId == ElementId.InvalidElementId && instance.Host != null:
+                    return instance.Host.LevelId;
+                default:
+                    return element.LevelId;
+            }
+        }
+
         internal static ViewSetup Read(View activeView)
         {
             if (!(activeView is ViewPlan view) || view.ViewType != ViewType.FloorPlan || view.IsTemplate)
@@ -106,7 +173,17 @@ namespace FloorplansRevitExtractor.ViewExport
                 new Vector2D(t.BasisX.X, t.BasisX.Y),
                 new Vector2D(t.BasisY.X, t.BasisY.Y));
 
-            return new ViewSetup(view, level, phaseId, frame, t, ImageRegionsOf(view, crop, shape), PlaneZ(view, level, PlanViewPlane.CutPlane), PlaneZ(view, level, PlanViewPlane.BottomClipPlane));
+            double cutZ = PlaneZ(view, level, PlanViewPlane.CutPlane);
+            return new ViewSetup(
+                view,
+                level,
+                phaseId,
+                frame,
+                t,
+                ImageRegionsOf(view, crop, shape),
+                cutZ,
+                PlaneZ(view, level, PlanViewPlane.BottomClipPlane),
+                SameFloorLimit(view, level, cutZ));
         }
 
         /// <summary>
@@ -157,6 +234,14 @@ namespace FloorplansRevitExtractor.ViewExport
                 model.MaxX + M(shape.RightAnnotationCropOffset),
                 model.MaxY + M(shape.TopAnnotationCropOffset));
             return new[] { annotation, model };
+        }
+
+        private static double SameFloorLimit(ViewPlan view, Level level, double cutZ)
+        {
+            PlanViewRange range = view.GetViewRange();
+            return view.Document.GetElement(range.GetLevelId(PlanViewPlane.TopClipPlane)) is Level top
+                ? top.ProjectElevation + range.GetOffset(PlanViewPlane.TopClipPlane)
+                : cutZ + (cutZ - level.ProjectElevation);
         }
 
         /// <summary>Absolute height (feet) of one plane of the view range: its level plus its offset.</summary>

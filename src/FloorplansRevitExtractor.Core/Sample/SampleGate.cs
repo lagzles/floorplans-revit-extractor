@@ -28,18 +28,23 @@ namespace FloorplansRevitExtractor.Core.Sample
         /// <summary>analisar_dataset.py treats a class as wall when more than this share of it is on ink.</summary>
         public const double WallInkShare = 0.55;
 
-        /// <summary>Spec v2 count check: blobs within 5% of the elements extracted.</summary>
+        /// <summary>Count check: up to 5% of the elements of a class may end with no pixel of it.</summary>
         private const double CountTolerance = 0.05;
+
+        /// <summary>
+        /// The classes whose elements are counted. Comparing elements with blobs,
+        /// as the spec words it, fails both ways on real plans: a window next to
+        /// a curtain wall, or two crossing grids, merge into one blob, and a door
+        /// cutting a pillar splits it in two. What the count is for is whether
+        /// every element made it into the mask, so that is what is checked.
+        /// </summary>
+        private static readonly StructureClass[] CountedClasses =
+        {
+            StructureClass.Door, StructureClass.Passage, StructureClass.Window, StructureClass.CurtainWall, StructureClass.Pillar, StructureClass.Grid,
+        };
 
         /// <summary>Spec v4: at least this share of text boxes must hold ink (the letters).</summary>
         public const double MinTextBoxesWithInk = 0.9;
-
-        /// <summary>Spec v4 count check: an opening and its refinement count together.</summary>
-        private static readonly IReadOnlyDictionary<StructureClass, StructureClass[]> CountedTogether = new Dictionary<StructureClass, StructureClass[]>
-        {
-            [StructureClass.Door] = new[] { StructureClass.Door, StructureClass.Passage },
-            [StructureClass.Window] = new[] { StructureClass.Window, StructureClass.CurtainWall },
-        };
 
         // Spec v2, whole sheet: outside these the sample goes to review, not out.
         private const double MinWallFraction = 0.008;
@@ -54,7 +59,6 @@ namespace FloorplansRevitExtractor.Core.Sample
             SampleLabel label,
             GeomDocument geom,
             IReadOnlyList<string> notes,
-            IReadOnlyDictionary<StructureClass, int>? expectedCounts = null,
             SemanticMask? structureOnly = null)
         {
             var rejections = new List<GateFinding>();
@@ -88,7 +92,7 @@ namespace FloorplansRevitExtractor.Core.Sample
             CheckRoundtrip(label, rejections);
             CheckInk(ink, rejections, review);
             CheckDistribution(metrics, label, review);
-            CheckCounts(semantic, expectedCounts, review);
+            CheckPainted(semantic, geom, review);
             AddReviewNotes(label, geom, notes, review);
             return new GateResult(rejections, review, metrics);
         }
@@ -294,27 +298,71 @@ namespace FloorplansRevitExtractor.Core.Sample
         }
 
         /// <summary>
-        /// Openings that touch merge into one blob and tiny elements vanish when
-        /// rasterized, so a count off by more than 5% goes to review, not out.
+        /// Elements of the counted classes with no pixel of their class where
+        /// they lie: tiny elements vanish when rasterized, and a later layer may
+        /// cover one entirely. More than 5% of a class goes to review, not out.
         /// </summary>
-        private static void CheckCounts(SemanticMask semantic, IReadOnlyDictionary<StructureClass, int>? expected, List<GateFinding> review)
+        private static void CheckPainted(SemanticMask semantic, GeomDocument geom, List<GateFinding> review)
         {
-            if (expected == null)
+            if (semantic.Width != geom.Transform.Width || semantic.Height != geom.Transform.Height)
             {
                 return;
             }
 
-            foreach (KeyValuePair<StructureClass, int> entry in expected.OrderBy(e => e.Key))
+            IReadOnlyList<MaskElement> shapes = GeomRasterizer.ToMaskElements(geom);
+            foreach (StructureClass cls in CountedClasses)
             {
-                int blobs = BlobCounter.Count(semantic, CountedTogether.TryGetValue(entry.Key, out StructureClass[] group) ? group : new[] { entry.Key });
-                int allowed = (int)Math.Floor(entry.Value * CountTolerance);
-                if (Math.Abs(blobs - entry.Value) > allowed)
+                var missing = new List<long>();
+                int total = 0;
+                for (int i = 0; i < geom.Elements.Count; i++)
                 {
+                    if (geom.Elements[i].Class != cls)
+                    {
+                        continue;
+                    }
+
+                    total++;
+                    if (!HasPixelOf(semantic, shapes[i], cls))
+                    {
+                        missing.Add(geom.Elements[i].RevitId);
+                    }
+                }
+
+                if (missing.Count > Math.Floor(total * CountTolerance))
+                {
+                    string ids = string.Join(", ", missing.Distinct().Take(10)) + (missing.Count > 10 ? "…" : "");
                     review.Add(new GateFinding(
                         "contagem",
-                        $"{entry.Value} elemento(s) de {StructureClassNames.ToName(entry.Key)} extraído(s), {blobs} mancha(s) na máscara."));
+                        $"{missing.Count} de {total} elemento(s) de {StructureClassNames.ToName(cls)} sem nenhum pixel na máscara: {ids}."));
                 }
             }
+        }
+
+        private static bool HasPixelOf(SemanticMask mask, MaskElement shape, StructureClass cls)
+        {
+            bool found = false;
+            byte value = (byte)cls;
+            byte[] pixels = mask.Pixels;
+            int width = mask.Width;
+            SpanWriter look = (row, first, last) =>
+            {
+                for (int x = first; x <= last && !found; x++)
+                {
+                    found = pixels[(row * width) + x] == value;
+                }
+            };
+
+            foreach (PolygonShape polygon in shape.Polygons)
+            {
+                ScanlineFiller.FillSpans(width, mask.Height, polygon, look);
+            }
+
+            if (shape.Polylines.Count > 0)
+            {
+                StrokeRasterizer.StrokeSpans(width, mask.Height, shape.Polylines, shape.StrokeWidthPixels, look);
+            }
+
+            return found;
         }
 
         private static void AddReviewNotes(SampleLabel label, GeomDocument geom, IReadOnlyList<string> notes, List<GateFinding> review)

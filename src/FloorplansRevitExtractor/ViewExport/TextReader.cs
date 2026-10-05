@@ -99,7 +99,7 @@ namespace FloorplansRevitExtractor.ViewExport
             }
 
             double half = UnitsConverter.ToMeters(LeaderedHeadHalfPaperFeet * setup.View.Scale);
-            return ink.Fit(setup.ToFrame(head), direction, half, half);
+            return ink.Fit(setup.ToFrame(head), direction, half, half, isSearchArea: true);
         }
     }
 }

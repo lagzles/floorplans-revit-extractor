@@ -59,7 +59,7 @@ refinam uma classe antiga, então a máscara dobra exatamente para 12 e para
 
 | classe | de onde vem |
 |---|---|
-| 1 room | ambientes cortados pelo plano de corte (qualquer nível), face acabada; piso externo; rampa |
+| 1 room | ambientes cortados pelo plano de corte, face acabada; todo piso modelado do pavimento, com ou sem ambiente (exceto sob pátio descoberto); rampa |
 | 2 wall | seção da parede no plano de corte |
 | 3 door | porta com folha: retângulo largura do vão × espessura da parede, no eixo da parede |
 | 4 window | janela com menos de 3,0 m, mesmo retângulo |

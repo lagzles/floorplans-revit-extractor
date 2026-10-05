@@ -29,7 +29,7 @@ namespace FloorplansRevitExtractor.ViewExport
         private const int CircleSegments = 48;
 
         /// <summary>The letter is looked for in the square inside the bubble: this share of the radius.</summary>
-        private const double LetterShareOfRadius = 0.72;
+        private const double LetterShareOfRadius = 0.6;
 
         internal static GridReading Read(Document doc, ViewSetup setup, InkBoxes ink)
         {
@@ -76,12 +76,11 @@ namespace FloorplansRevitExtractor.ViewExport
                     }
                     else if (headCircle != null && curves[0] is Line line)
                     {
-                        // The head family is drawn on paper with its origin at the grid end and
-                        // its up axis pointing out along the grid: scale and place it there.
+                        // Revit draws the bubble touching the grid end, beyond it (checked on the
+                        // exported image), whatever the head family's own origin.
                         XYZ outward = end == DatumEnds.End0 ? line.Direction.Negate() : line.Direction;
-                        XYZ left = XYZ.BasisZ.CrossProduct(outward);
-                        double scale = view.Scale;
-                        circle = (tip + (outward * headCircle.Center.Y * scale) + (left * -headCircle.Center.X * scale), headCircle.Radius * scale);
+                        double radius = headCircle.Radius * view.Scale;
+                        circle = (tip + (outward * radius), radius);
                         bubblesFromHead++;
                     }
 
@@ -94,7 +93,7 @@ namespace FloorplansRevitExtractor.ViewExport
                     polylines.Add(Circle(circle.Value.Center, circle.Value.Radius, setup));
                     closed.Add(true);
                     double half = UnitsConverter.ToMeters(circle.Value.Radius * LetterShareOfRadius);
-                    IReadOnlyList<Point2D> letter = ink.Fit(setup.ToFrame(circle.Value.Center), new Vector2D(1, 0), half, half);
+                    IReadOnlyList<Point2D> letter = ink.Fit(setup.ToFrame(circle.Value.Center), new Vector2D(1, 0), half, half, isSearchArea: true);
                     if (letter == null)
                     {
                         lettersMissing++;

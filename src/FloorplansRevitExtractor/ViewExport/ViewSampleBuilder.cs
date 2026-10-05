@@ -42,12 +42,12 @@ namespace FloorplansRevitExtractor.ViewExport
             PillarReading pillars = PillarReader.Read(doc, setup);
             StairReading stairs = StairReader.Read(doc, setup);
             VoidReading voids = VoidReader.Read(doc, setup);
-            ExteriorFloorReading exteriorFloors = ExteriorFloorReader.Read(doc, setup);
+            FloorReading floors = FloorReader.Read(doc, setup, rooms.Records.Where(r => r.Type == "patio").Select(r => r.Polygon).ToList());
             GridReading grids = GridReader.Read(doc, setup, ink);
             DimensionReading dimensions = DimensionReader.Read(doc, setup, ink);
             TextReading texts = TextReader.Read(doc, setup, ink);
             FurnitureReading furniture = FurnitureReader.Read(doc, setup, rooms.RecordIdByRoom);
-            IReadOnlyList<GeomElement> elements = exteriorFloors.Elements
+            IReadOnlyList<GeomElement> elements = floors.Elements
                 .Concat(rooms.Elements)
                 .Concat(stairs.Elements)
                 .Concat(voids.Elements)
@@ -60,6 +60,7 @@ namespace FloorplansRevitExtractor.ViewExport
                 .Concat(dimensions.Elements)
                 .Concat(texts.Elements)
                 .ToList();
+            HeightDiagnostics.Write(doc, setup, debugFolder, walls.Uncut.Concat(pillars.Uncut));
             ViewPlan view = setup.View;
             string docGuid = doc.ProjectInformation.UniqueId;
 
@@ -74,7 +75,7 @@ namespace FloorplansRevitExtractor.ViewExport
                     .Concat(stairs.Warnings)
                     .Concat(voids.Warnings)
                     .Concat(furniture.Warnings)
-                    .Concat(exteriorFloors.Warnings)
+                    .Concat(floors.Warnings)
                     .Concat(grids.Warnings)
                     .Concat(dimensions.Warnings)
                     .Concat(railings.Warnings)
@@ -120,6 +121,7 @@ namespace FloorplansRevitExtractor.ViewExport
                 Furniture = furniture.Records,
                 RenderStyle = RenderStyle.Empty.With("scale_den", view.Scale).With("lang", "pt"),
                 ReviewNotes = rooms.Notes
+                    .Concat(floors.Notes)
                     .Concat(walls.Notes)
                     .Concat(openings.Notes)
                     .Concat(pillars.Notes)
@@ -132,14 +134,10 @@ namespace FloorplansRevitExtractor.ViewExport
                     .Concat(texts.Notes)
                     .Concat(GridLookalikeNotes(doc, view))
                     .Concat(LinkNotes(doc, view))
+                    .Concat(setup.ShiftedLevelNames.Count == 0
+                        ? Enumerable.Empty<string>()
+                        : new[] { "Blocos em níveis próprios cortados à mesma altura acima do seu nível: " + string.Join(", ", setup.ShiftedLevelNames) + "." })
                     .ToList(),
-                // Spec v4: doors with passages, windows with glass skins, as the gate counts their blobs together.
-                ExpectedCounts = new Dictionary<StructureClass, int>
-                {
-                    [StructureClass.Door] = elements.Count(e => e.Class == StructureClass.Door || e.Class == StructureClass.Passage),
-                    [StructureClass.Window] = elements.Count(e => e.Class == StructureClass.Window || e.Class == StructureClass.CurtainWall),
-                    [StructureClass.Pillar] = elements.Count(e => e.Class == StructureClass.Pillar),
-                },
             };
 
             return (request, image.Diagnostics);

@@ -25,8 +25,9 @@ namespace FloorplansRevitExtractor.ViewExport
 
         /// <param name="centerM">Center of the loose box, view frame (m).</param>
         /// <param name="direction">Reading direction in the view frame (Y up).</param>
-        /// <returns>The tight box in the view frame, or null when the loose box has no ink.</returns>
-        internal IReadOnlyList<Point2D> Fit(Point2D centerM, Vector2D direction, double halfWidthM, double halfHeightM)
+        /// <param name="isSearchArea">True when the box is only an area around the text: ink filling it is clutter.</param>
+        /// <returns>The tight box in the view frame, or null when the loose box has no letter ink.</returns>
+        internal IReadOnlyList<Point2D> Fit(Point2D centerM, Vector2D direction, double halfWidthM, double halfHeightM, bool isSearchArea = false)
         {
             double k = _transform.PxPerM;
             IReadOnlyList<Point2D> pixels = TextBoxFitter.Fit(
@@ -34,7 +35,8 @@ namespace FloorplansRevitExtractor.ViewExport
                 _transform.ToPixel(centerM),
                 new Vector2D(direction.X, -direction.Y),
                 halfWidthM * k,
-                halfHeightM * k);
+                halfHeightM * k,
+                isSearchArea);
             return pixels?.Select(_transform.ToView).ToArray();
         }
 

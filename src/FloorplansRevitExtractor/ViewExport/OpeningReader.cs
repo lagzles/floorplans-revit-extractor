@@ -75,16 +75,17 @@ namespace FloorplansRevitExtractor.ViewExport
                 return;
             }
 
-            if (!CutByPlane(opening, setup.CutPlaneZFeet))
+            if (!CutByPlane(opening, setup.CutZFor(opening)))
             {
                 state.NotCut++;
                 return;
             }
 
-            double? widthFeet = OpeningWidthFeet(opening);
-            (XYZ Center, XYZ Along, XYZ Normal)? placement = opening.Location is LocationPoint insertion
-                ? Placement(insertion.Point, host, state.Warnings)
-                : null;
+            // A door in a curtain wall takes its width from the panel, not from a width
+            // parameter, and may have no insertion point: its geometry stands in.
+            double? widthFeet = OpeningWidthFeet(opening) ?? GeometryWidthFeet(opening);
+            XYZ insertion = (opening.Location as LocationPoint)?.Point ?? BoxCenter(opening);
+            (XYZ Center, XYZ Along, XYZ Normal)? placement = insertion == null ? null : Placement(insertion, host, state.Warnings);
             if (widthFeet == null || placement == null)
             {
                 state.Warnings.Add(new GeomWarning(opening.Id.Value, "vão sem largura ou sem posição na parede: fora da máscara"));
@@ -199,7 +200,8 @@ namespace FloorplansRevitExtractor.ViewExport
 
             double bottom = Math.Min(corners[0].Z, corners[1].Z);
             double top = Math.Max(corners[0].Z, corners[1].Z);
-            if (bottom > setup.CutPlaneZFeet || top < setup.CutPlaneZFeet)
+            double cutZ = setup.CutZFor(host);
+            if (bottom > cutZ || top < cutZ)
             {
                 state.NotCut++;
                 return;
@@ -282,7 +284,7 @@ namespace FloorplansRevitExtractor.ViewExport
                 .FirstOrDefault(member =>
                 {
                     BoundingBoxXYZ box = member?.get_BoundingBox(null);
-                    return box != null && box.Min.Z <= setup.CutPlaneZFeet && setup.CutPlaneZFeet <= box.Max.Z;
+                    return box != null && box.Min.Z <= setup.CutZFor(member) && setup.CutZFor(member) <= box.Max.Z;
                 });
         }
 
@@ -371,6 +373,21 @@ namespace FloorplansRevitExtractor.ViewExport
 
             bool roughPlausible = rough >= nominal && rough <= nominal * MaxRoughToNominal;
             return roughPlausible ? rough : nominal;
+        }
+
+        /// <summary>The family's own width: its symbol geometry along local X, the direction of the wall.</summary>
+        private static double? GeometryWidthFeet(FamilyInstance opening)
+        {
+            GeometryInstance instance = opening.get_Geometry(new Options())?.OfType<GeometryInstance>().FirstOrDefault();
+            BoundingBoxXYZ box = instance?.GetSymbolGeometry()?.GetBoundingBox();
+            double width = box == null ? 0 : box.Max.X - box.Min.X;
+            return width > 0 ? width : (double?)null;
+        }
+
+        private static XYZ BoxCenter(Element element)
+        {
+            BoundingBoxXYZ box = element.get_BoundingBox(null);
+            return box == null ? null : (box.Min + box.Max) / 2;
         }
 
         private static double? FirstLength(FamilyInstance opening, params BuiltInParameter[] candidates)

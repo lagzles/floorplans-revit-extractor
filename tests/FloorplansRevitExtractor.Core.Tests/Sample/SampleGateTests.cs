@@ -113,9 +113,8 @@ namespace FloorplansRevitExtractor.Core.Tests.Sample
         }
 
         [Fact]
-        public void Check_ElementCountWithinFivePercentOfTheBlobs_Passes()
+        public void Check_EveryCountedElementPainted_Passes()
         {
-            // The test plan has 5 wall pieces; one connected wall outline in the mask.
             GeomDocument geom = Geom() with
             {
                 Elements = Geom().Elements.Concat(new[]
@@ -125,24 +124,26 @@ namespace FloorplansRevitExtractor.Core.Tests.Sample
                 }).ToArray(),
             };
 
-            GateResult gate = Gate(Request(geom: geom, image: ImagePng(geom)) with
-            {
-                ExpectedCounts = new Dictionary<StructureClass, int> { [StructureClass.Pillar] = 2 },
-            });
+            GateResult gate = Gate(Request(geom: geom, image: ImagePng(geom)));
 
             gate.Review.Should().NotContain(f => f.Check == "contagem");
         }
 
         [Fact]
-        public void Check_ElementsMissingFromTheMask_AreFlaggedForReview()
+        public void Check_ElementWithNoPixelInTheMask_IsFlaggedForReview()
         {
-            // Three doors were extracted, but the mask has none.
-            GateResult gate = Gate(Request() with
+            // A door placed outside the image: extracted, but nothing of it is painted.
+            GeomDocument geom = Geom() with
             {
-                ExpectedCounts = new Dictionary<StructureClass, int> { [StructureClass.Door] = 3 },
-            });
+                Elements = Geom().Elements.Concat(new[]
+                {
+                    GeomElement.Filled(StructureClass.Door, 77, new[] { Rect(500, 500, 501, 500.2) }),
+                }).ToArray(),
+            };
 
-            gate.Review.Should().ContainSingle(f => f.Check == "contagem").Which.Message.Should().Contain("3").And.Contain("0");
+            GateResult gate = Gate(Request(geom: geom, image: ImagePng(geom)));
+
+            gate.Review.Should().ContainSingle(f => f.Check == "contagem").Which.Message.Should().Contain("1 de 1").And.Contain("77");
         }
 
         [Fact]

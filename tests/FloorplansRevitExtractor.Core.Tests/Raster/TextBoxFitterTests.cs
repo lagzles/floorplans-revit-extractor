@@ -60,6 +60,31 @@ namespace FloorplansRevitExtractor.Core.Tests.Raster
         }
 
         [Fact]
+        public void Fit_ALineCrossingTheBox_IsNotPartOfTheText()
+        {
+            // A dimension line along row 14 under a "number" at rows 8-10.
+            var ink = new List<(int X, int Y)> { (12, 8), (16, 10) };
+            ink.AddRange(Enumerable.Range(0, 40).Select(x => (x, 14)));
+            RgbImage image = WhiteWithInk(40, 20, ink.ToArray());
+
+            IReadOnlyList<Point2D>? box = TextBoxFitter.Fit(image, new Point2D(15, 10), new Vector2D(1, 0), 12, 6);
+
+            box!.Max(p => p.Y).Should().BeApproximately(12, 1e-9);
+            box.Min(p => p.X).Should().BeApproximately(11, 1e-9);
+            box.Max(p => p.X).Should().BeApproximately(18, 1e-9);
+        }
+
+        [Fact]
+        public void Fit_SearchAreaFilledWithClutter_ReturnsNull()
+        {
+            // Ink at the four corners of a search area: no letter there, only drawing around it.
+            RgbImage image = WhiteWithInk(40, 40, (10, 10), (29, 10), (10, 29), (29, 29));
+
+            TextBoxFitter.Fit(image, new Point2D(20, 20), new Vector2D(1, 0), 10, 10, isSearchArea: true).Should().BeNull();
+            TextBoxFitter.Fit(image, new Point2D(20, 20), new Vector2D(1, 0), 10, 10).Should().NotBeNull("the text's own box may be full");
+        }
+
+        [Fact]
         public void Fit_NoInk_ReturnsNull()
         {
             RgbImage image = WhiteWithInk(20, 20);

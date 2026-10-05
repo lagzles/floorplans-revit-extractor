@@ -17,7 +17,8 @@ namespace FloorplansRevitExtractor.ViewExport
         double? WallExtM,
         double? WallIntM,
         double? WallIntMinM,
-        bool? ThinPartitions);
+        bool? ThinPartitions,
+        IReadOnlyList<Element> Uncut);
 
     /// <summary>
     /// Walls enter the mask by their section at the cut plane, with real
@@ -46,7 +47,7 @@ namespace FloorplansRevitExtractor.ViewExport
             int curtain = 0;
             int curtainWidened = 0;
             int low = 0;
-            int uncut = 0;
+            var uncut = new List<Element>();
 
             FilteredElementCollector collector = new FilteredElementCollector(doc, setup.View.Id).OfClass(typeof(Wall));
             if (setup.PhaseId != ElementId.InvalidElementId)
@@ -65,9 +66,9 @@ namespace FloorplansRevitExtractor.ViewExport
                 BoundingBoxXYZ box = wall.get_BoundingBox(null);
                 if (wall.WallType.Kind == WallKind.Curtain)
                 {
-                    if (box == null || box.Min.Z > setup.CutPlaneZFeet || box.Max.Z < setup.CutPlaneZFeet)
+                    if (box == null || box.Min.Z > setup.CutZFor(wall) || box.Max.Z < setup.CutZFor(wall))
                     {
-                        uncut++;
+                        uncut.Add(wall);
                         return;
                     }
 
@@ -81,14 +82,14 @@ namespace FloorplansRevitExtractor.ViewExport
                 (List<IReadOnlyList<Point2D>> outers, List<IReadOnlyList<Point2D>> holes) = CutSection.Of(wall, setup, warnings);
                 if (outers.Count == 0)
                 {
-                    bool belowCut = box != null && box.Max.Z < setup.CutPlaneZFeet && box.Max.Z >= setup.BottomZFeet;
+                    bool belowCut = box != null && box.Max.Z < setup.CutZFor(wall) && box.Max.Z >= setup.BottomZFor(wall);
                     if (belowCut && AddOutline(elements, StructureClass.LowWall, wall, UnitsConverter.ToMeters(wall.Width), setup))
                     {
                         low++;
                     }
                     else
                     {
-                        uncut++;
+                        uncut.Add(wall);
                     }
 
                     return;
@@ -116,9 +117,9 @@ namespace FloorplansRevitExtractor.ViewExport
                 notes.Add($"{low} parede(s) abaixo do plano de corte como mureta (14), pelo contorno em projeção.");
             }
 
-            if (uncut > 0)
+            if (uncut.Count > 0)
             {
-                notes.Add($"{uncut} parede(s) visível(is) fora do plano de corte e acima do fundo da vista ficaram fora da máscara.");
+                notes.Add($"{uncut.Count} parede(s) visível(is) fora do plano de corte e acima do fundo da vista ficaram fora da máscara.");
             }
 
             return new WallReading(
@@ -128,7 +129,8 @@ namespace FloorplansRevitExtractor.ViewExport
                 Median(exterior),
                 Median(interior),
                 interior.Count == 0 ? (double?)null : interior.Min(),
-                interior.Count == 0 ? (bool?)null : interior.Any(w => w < ThinPartitionM));
+                interior.Count == 0 ? (bool?)null : interior.Any(w => w < ThinPartitionM),
+                uncut);
         }
 
         /// <summary>

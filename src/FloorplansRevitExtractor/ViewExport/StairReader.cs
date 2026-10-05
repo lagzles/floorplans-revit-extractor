@@ -43,7 +43,7 @@ namespace FloorplansRevitExtractor.ViewExport
 
                 IEnumerable<Element> components = stair.GetStairsRuns().Concat(stair.GetStairsLandings()).Select(doc.GetElement).Where(c => c != null);
                 List<IReadOnlyList<Point2D>> rings = components
-                    .Where(c => Shown(c, setup.BottomZFeet, setup.CutPlaneZFeet))
+                    .Where(c => Shown(c, setup.BottomZFor(c), setup.CutZFor(c)))
                     .Select(c => Footprint(c, setup))
                     .Where(r => r != null)
                     .ToList();
@@ -58,7 +58,7 @@ namespace FloorplansRevitExtractor.ViewExport
             IEnumerable<Element> ramps = new FilteredElementCollector(doc, setup.View.Id)
                 .OfCategory(BuiltInCategory.OST_Ramps)
                 .WhereElementIsNotElementType()
-                .Where(r => Shown(r, setup.BottomZFeet, setup.CutPlaneZFeet))
+                .Where(r => Shown(r, setup.BottomZFor(r), setup.CutZFor(r)))
                 .OrderBy(r => r.Id.Value);
             ElementGuard.Each(ramps, warnings, ramp => AddFootprint(elements, StructureClass.Room, ramp, TopFootprint.Of(ramp, setup)));
 

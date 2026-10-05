@@ -70,11 +70,14 @@ namespace FloorplansRevitExtractor.Core.Tests.Vocabulary
         }
 
         [Theory]
-        [InlineData("Café 101")]
-        [InlineData("Utility 107")]
-        public void TryMapType_EnglishNamesWithoutAClearType_StayUnmapped(string raw)
+        [InlineData("Café 101", "dining_room")] // eating area; "Café Kitchen" stays kitchen (longer keyword first)
+        [InlineData("Utility 107", "laundry")] // service room, as AREA DE SERVICO
+        [InlineData("Studio Unit 203", "living_room")]
+        [InlineData("Live/Work Unit 202", "living_room")]
+        public void TryMapType_SampleModelNames_MapToTheClosestType(string raw, string expected)
         {
-            RoomTypeVocabulary.TryMapType(RoomTypeVocabulary.Normalize(raw), out _).Should().BeFalse(raw);
+            RoomTypeVocabulary.TryMapType(RoomTypeVocabulary.Normalize(raw), out string? type).Should().BeTrue(raw);
+            type.Should().Be(expected);
         }
 
         [Fact]

@@ -313,7 +313,7 @@ namespace FloorplansRevitExtractor.ViewExport
             double heightFeet = (size != null && size.HasValue ? size.AsDouble() : TickPaperFeet) * setup.View.Scale;
             double heightM = UnitsConverter.ToMeters(heightFeet);
             Vector2D along = setup.Frame.ToViewDirection(new Vector2D(direction.X, direction.Y));
-            return ink.Fit(setup.ToFrame(position), along, heightM * ValueHalfWidthPerChar * Math.Max(text.Length, 2), heightM * ValueHalfHeights);
+            return ink.Fit(setup.ToFrame(position), along, heightM * ValueHalfWidthPerChar * Math.Max(text.Length, 2), heightM * ValueHalfHeights, isSearchArea: true);
         }
 
         /// <summary>Where the value texts sit; some dimension kinds do not report it.</summary>

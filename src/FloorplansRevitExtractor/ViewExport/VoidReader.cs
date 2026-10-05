@@ -42,7 +42,7 @@ namespace FloorplansRevitExtractor.ViewExport
             ElementGuard.Each(openings, warnings, opening =>
             {
                 BoundingBoxXYZ box = opening.get_BoundingBox(null);
-                if (box == null || box.Min.Z > setup.CutPlaneZFeet || box.Max.Z < setup.BottomZFeet)
+                if (box == null || box.Min.Z > setup.CutZFor(opening) || box.Max.Z < setup.BottomZFor(opening))
                 {
                     return;
                 }
