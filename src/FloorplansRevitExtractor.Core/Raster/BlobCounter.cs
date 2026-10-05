@@ -10,8 +10,17 @@ namespace FloorplansRevitExtractor.Core.Raster
     /// </summary>
     public static class BlobCounter
     {
-        public static int Count(SemanticMask mask, StructureClass cls)
+        public static int Count(SemanticMask mask, StructureClass cls) => Count(mask, new[] { cls });
+
+        /// <summary>Regions of any of the classes together: a door next to a passage is one blob.</summary>
+        public static int Count(SemanticMask mask, IReadOnlyCollection<StructureClass> classes)
         {
+            var inSet = new bool[256];
+            foreach (StructureClass cls in classes)
+            {
+                inSet[(byte)cls] = true;
+            }
+
             byte[] pixels = mask.Pixels;
             int width = mask.Width;
             int height = mask.Height;
@@ -21,7 +30,7 @@ namespace FloorplansRevitExtractor.Core.Raster
 
             for (int start = 0; start < pixels.Length; start++)
             {
-                if (seen[start] || pixels[start] != (byte)cls)
+                if (seen[start] || !inSet[pixels[start]])
                 {
                     continue;
                 }
@@ -46,7 +55,7 @@ namespace FloorplansRevitExtractor.Core.Raster
                             }
 
                             int n = (ny * width) + nx;
-                            if (!seen[n] && pixels[n] == (byte)cls)
+                            if (!seen[n] && inSet[pixels[n]])
                             {
                                 seen[n] = true;
                                 stack.Push(n);

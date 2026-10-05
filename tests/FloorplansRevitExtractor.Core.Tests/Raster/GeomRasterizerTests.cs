@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using FloorplansRevitExtractor.Core.Geometry;
 using FloorplansRevitExtractor.Core.Json;
 using FloorplansRevitExtractor.Core.Model;
@@ -49,6 +50,23 @@ namespace FloorplansRevitExtractor.Core.Tests.Raster
 
             elements[0].StrokeWidthPixels.Should().Be(2);
             elements[0].Polylines[0][1].Should().Be(new Point2D(20, 60));
+        }
+
+        [Fact]
+        public void PaintSemantic_ClosedBubble_HasNoGapWhereItCloses()
+        {
+            // Spec v3: the grid bubble is a closed polyline; its last point does not repeat the first.
+            var circle = Enumerable.Range(0, 24)
+                .Select(i => new Point2D(5 + (Math.Cos(i * Math.PI / 12) * 2), 4 + (Math.Sin(i * Math.PI / 12) * 2)))
+                .ToArray();
+            GeomElement bubble = GeomElement.Stroked(StructureClass.Grid, 1, new[] { circle }, 0.2, new[] { true });
+
+            SemanticMask closed = GeomRasterizer.PaintSemantic(Doc(bubble));
+            SemanticMask open = GeomRasterizer.PaintSemantic(Doc(GeomElement.Stroked(StructureClass.Grid, 1, new[] { circle }, 0.2)));
+
+            closed.CountPixels(StructureClass.Grid).Should().BeGreaterThan(open.CountPixels(StructureClass.Grid));
+            Point2D closing = TenPxPerM.ToPixel(new Point2D(5 + (2 * Math.Cos(-Math.PI / 24)), 4 + (2 * Math.Sin(-Math.PI / 24))));
+            closed[(int)closing.X, (int)closing.Y].Should().Be((byte)StructureClass.Grid);
         }
 
         [Fact]

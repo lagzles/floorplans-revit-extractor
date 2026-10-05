@@ -52,28 +52,46 @@ trocar quando houver um label do v7.
 ### Exportar vista ativa (M4, primeira entrega do spec v2)
 
 Botão **"Extração" → "Exportar vista ativa"**: transforma a planta baixa
-aberta numa amostra de treino com as 10 classes do spec v2:
+aberta numa amostra de treino com as 17 classes do spec v4
+(`teste-2d-reading/docs/spec-plugin-revit-v4.md`). As classes 12 a 16
+refinam uma classe antiga, então a máscara dobra exatamente para 12 e para
+10 classes:
 
 | classe | de onde vem |
 |---|---|
-| 1 room | ambientes cortados pelo plano de corte (qualquer nível), face acabada |
-| 2 wall | seção da parede no plano de corte (paredes-cortina ficam fora: pergunta em aberto) |
-| 3 door / 4 window | retângulo largura do vão × espessura da parede, no eixo da parede |
+| 1 room | ambientes cortados pelo plano de corte (qualquer nível), face acabada; piso externo; rampa |
+| 2 wall | seção da parede no plano de corte |
+| 3 door | porta com folha: retângulo largura do vão × espessura da parede, no eixo da parede |
+| 4 window | janela com menos de 3,0 m, mesmo retângulo |
 | 5 pillar | seção do pilar no plano de corte, forma real |
 | 6 stair | projeção de lances e patamares; ambiente "escada"/"stair" |
-| 7 furniture | caixa da família girada com a instância (mobiliário, casework, louças, equipamentos) |
+| 7 furniture | caixa da família girada com a instância: móvel solto e eletrodoméstico de pé, só sobre piso |
 | 8 swing | arco e folha da porta desenhados na vista, traço de 4 cm, só sobre piso |
 | 9 void | shafts e furos de laje; ambiente "elevador"/"shaft" |
+| 10 grid | traço do eixo como a vista o mostra, círculo da bolha e letra da bolha |
+| 11 dimension | cota linear: linha, chamadas, tiques e o número |
+| 12 passage | porta sem folha desenhada (vão, "cased opening"); abertura de parede até o piso |
+| 13 text | caixa justa das letras de notas e tags, apertada pela tinta da imagem |
+| 14 low_wall | guarda-corpo de terraço/varanda (faixa de 10 cm); parede abaixo do plano de corte |
+| 15 curtain_wall | parede-cortina; janela com 3,0 m ou mais |
+| 16 fixture | louça, bancada, marcenaria, divisória sanitária, equipamento fixo |
 
-Ainda fora: piso externo (deck, calçada), rampas, escadas por esboço e
-elementos de modelos vinculados — cada caso aparece em `review.json`.
+Ordem de pintura (spec v4 §5): ambiente, escada, vazio, parede e pele de
+vidro, mureta (só sobre fundo/piso), pilar, móvel e louça (só sobre piso),
+arco, janela, porta e passagem, e por último eixo, cota e texto, cada um só
+sobre fundo ou piso. Pátio descoberto fica fundo. Famílias sem sólido
+(símbolos 2D) e zonas de folga não são pintadas. Ainda fora: elementos de
+modelos vinculados e cotas de nível — cada caso aparece em `review.json`.
+Em `qa/` vão três imagens por amostra: a máscara a 40%, `_anotacao` (eixo,
+cota e texto) e `_novas` (passagem, mureta, pele de vidro e louça).
 
 - A vista precisa de **região de recorte ativa e retangular**; com o recorte
   de anotação ativo, cota e texto de fora não entram pela metade.
 - A imagem sai a **48 px/m** (faixa típica do spec). O exportador mede o PNG
   gerado para achar a região que ele cobre; se nenhuma bater com 1 px de
   tolerância, para e mostra as medidas, sem gravar nada desalinhado.
-- O lote vai para `Documentos\floorplans-dataset\`: `images/`,
+- O lote vai para `%USERPROFILE%\floorplans-dataset\` (fora de `Documentos`,
+  que costuma estar no OneDrive, cuja sincronização trava arquivos): `images/`,
   `masks_semantic/`, `masks_instance/`, `labels/` (os quatro do dataset),
   `geom/`, `qa/` (imagem + máscara a 40%, para conferir o alinhamento),
   `reports/`, `rejected/`, `manifest.json`, `classes.json`, `registry.json`

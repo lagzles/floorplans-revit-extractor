@@ -6,6 +6,7 @@ using Autodesk.Revit.DB;
 using FloorplansRevitExtractor.Core.Geometry;
 using FloorplansRevitExtractor.Core.Label;
 using FloorplansRevitExtractor.Core.Model;
+using FloorplansRevitExtractor.Core.Png;
 using FloorplansRevitExtractor.Core.Raster;
 using FloorplansRevitExtractor.Core.Sample;
 using FloorplansRevitExtractor.RevitInterop;
@@ -15,8 +16,8 @@ namespace FloorplansRevitExtractor.ViewExport
     /// <summary>
     /// Reads one plan view into a <see cref="SampleRequest"/>: exports the
     /// image, measures its transform, and extracts every mask class of spec
-    /// v2: rooms, stairs, voids, cut walls, pillars, furniture, doors, windows
-    /// and door swings.
+    /// v3: rooms, stairs, voids, cut walls, pillars, furniture, doors, windows,
+    /// door swings, grids and dimensions.
     /// </summary>
     internal static class ViewSampleBuilder
     {
@@ -34,19 +35,30 @@ namespace FloorplansRevitExtractor.ViewExport
         {
             ExportedImage image = ViewImageExporter.Export(doc, setup, targetPxPerM, debugFolder);
             RoomReading rooms = ViewRoomReader.Read(doc, setup, setup.ModelRegion);
+            var ink = new InkBoxes(PngDecoder.DecodeRgb(image.Png), image.Transform);
             WallReading walls = WallSectionReader.Read(doc, setup, image.Transform.PxPerM);
-            OpeningReading openings = OpeningReader.Read(doc, setup, rooms.RecordIdByRoom);
+            OpeningReading openings = OpeningReader.Read(doc, setup, rooms.RecordIdByRoom, image.Transform.PxPerM);
+            RailingReading railings = RailingReader.Read(doc, setup);
             PillarReading pillars = PillarReader.Read(doc, setup);
             StairReading stairs = StairReader.Read(doc, setup);
             VoidReading voids = VoidReader.Read(doc, setup);
+            ExteriorFloorReading exteriorFloors = ExteriorFloorReader.Read(doc, setup);
+            GridReading grids = GridReader.Read(doc, setup, ink);
+            DimensionReading dimensions = DimensionReader.Read(doc, setup, ink);
+            TextReading texts = TextReader.Read(doc, setup, ink);
             FurnitureReading furniture = FurnitureReader.Read(doc, setup, rooms.RecordIdByRoom);
-            IReadOnlyList<GeomElement> elements = rooms.Elements
+            IReadOnlyList<GeomElement> elements = exteriorFloors.Elements
+                .Concat(rooms.Elements)
                 .Concat(stairs.Elements)
                 .Concat(voids.Elements)
                 .Concat(walls.Elements)
+                .Concat(railings.Elements)
                 .Concat(pillars.Elements)
                 .Concat(furniture.Elements)
                 .Concat(openings.Elements)
+                .Concat(grids.Elements)
+                .Concat(dimensions.Elements)
+                .Concat(texts.Elements)
                 .ToList();
             ViewPlan view = setup.View;
             string docGuid = doc.ProjectInformation.UniqueId;
@@ -62,6 +74,11 @@ namespace FloorplansRevitExtractor.ViewExport
                     .Concat(stairs.Warnings)
                     .Concat(voids.Warnings)
                     .Concat(furniture.Warnings)
+                    .Concat(exteriorFloors.Warnings)
+                    .Concat(grids.Warnings)
+                    .Concat(dimensions.Warnings)
+                    .Concat(railings.Warnings)
+                    .Concat(texts.Warnings)
                     .ToList(),
             };
 
@@ -109,13 +126,42 @@ namespace FloorplansRevitExtractor.ViewExport
                     .Concat(stairs.Notes)
                     .Concat(voids.Notes)
                     .Concat(furniture.Notes)
+                    .Concat(grids.Notes)
+                    .Concat(dimensions.Notes)
+                    .Concat(railings.Notes)
+                    .Concat(texts.Notes)
+                    .Concat(GridLookalikeNotes(doc, view))
                     .Concat(LinkNotes(doc, view))
                     .ToList(),
-                ExpectedCounts = new[] { StructureClass.Door, StructureClass.Window, StructureClass.Pillar }
-                    .ToDictionary(cls => cls, cls => elements.Count(e => e.Class == cls)),
+                // Spec v4: doors with passages, windows with glass skins, as the gate counts their blobs together.
+                ExpectedCounts = new Dictionary<StructureClass, int>
+                {
+                    [StructureClass.Door] = elements.Count(e => e.Class == StructureClass.Door || e.Class == StructureClass.Passage),
+                    [StructureClass.Window] = elements.Count(e => e.Class == StructureClass.Window || e.Class == StructureClass.CurtainWall),
+                    [StructureClass.Pillar] = elements.Count(e => e.Class == StructureClass.Pillar),
+                },
             };
 
             return (request, image.Diagnostics);
+        }
+
+        /// <summary>
+        /// Spec v3: a detail line drawn to look like a grid (dash-dot style) is
+        /// not a grid; it stays out of the mask and is only counted, to learn
+        /// how common it is.
+        /// </summary>
+        private static IEnumerable<string> GridLookalikeNotes(Document doc, View view)
+        {
+            string[] gridLike = { "CENTER", "EIXO", "DASH DOT", "DASHDOT", "TRACO PONTO", "TRAÇO PONTO", "GRID" };
+            int count = new FilteredElementCollector(doc, view.Id)
+                .OfCategory(BuiltInCategory.OST_Lines)
+                .OfClass(typeof(CurveElement))
+                .Cast<CurveElement>()
+                .Count(c => c.LineStyle is GraphicsStyle style && gridLike.Any(k => style.Name.ToUpperInvariant().Contains(k)));
+            if (count > 0)
+            {
+                yield return $"{count} linha(s) de detalhe com estilo de eixo (traço-ponto) ficaram fora da máscara (spec v3: a classe vem da categoria).";
+            }
         }
 
         /// <summary>v2 first delivery: active document only; a visible link is flagged, never half-exported in silence.</summary>

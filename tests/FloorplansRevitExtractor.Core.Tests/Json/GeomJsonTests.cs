@@ -100,6 +100,63 @@ namespace FloorplansRevitExtractor.Core.Tests.Json
         }
 
         [Fact]
+        public void WriteThenRead_KeepsTheClosedFlagsOfAnnotationStrokes()
+        {
+            GeomElement grid = GeomElement.Stroked(
+                StructureClass.Grid,
+                6601,
+                new[] { Ring((0.0, -1.2), (0.0, 9.8)), Ring((0.4, 10.2), (0.0, 10.6), (-0.4, 10.2), (0.0, 9.8)) },
+                0.04,
+                new[] { false, true });
+
+            GeomDocument back = GeomJsonReader.Read(new MemoryStream(Write(SpecExample() with { Elements = new[] { grid } })));
+
+            back.Elements[0].Class.Should().Be(StructureClass.Grid);
+            back.Elements[0].Closed.Should().Equal(false, true);
+        }
+
+        [Fact]
+        public void Write_AnnotationStrokes_CarryTheClosedArray()
+        {
+            GeomElement dimension = GeomElement.Stroked(StructureClass.Dimension, 7701, new[] { Ring((0, -1.9), (5.2, -1.9)) }, 0.04);
+
+            using JsonDocument json = JsonDocument.Parse(Write(SpecExample() with { Elements = new[] { dimension } }));
+            JsonElement element = json.RootElement.GetProperty("elements")[0];
+
+            element.EnumerateObject().Select(p => p.Name).Should().Equal("cls", "revit_id", "polylines", "closed", "stroke_m");
+            element.GetProperty("closed").EnumerateArray().Select(e => e.GetBoolean()).Should().Equal(false);
+        }
+
+        [Fact]
+        public void KindAndText_RoundTrip_AfterTheGeometry()
+        {
+            GeomElement text = GeomElement.Filled(StructureClass.Text, 7720, new[] { (IReadOnlyList<Point2D>)new[] { new Point2D(1.1, 2.0), new Point2D(2.4, 2.0), new Point2D(2.4, 2.2) } })
+                .WithLabel(null, "SALA");
+            GeomElement fixture = GeomElement.Filled(StructureClass.Fixture, 9902, new[] { (IReadOnlyList<Point2D>)new[] { new Point2D(0.3, 0.3), new Point2D(0.7, 0.3), new Point2D(0.7, 0.9) } })
+                .WithLabel("Toilet", null);
+            GeomDocument document = SpecExample() with { Elements = new[] { text, fixture } };
+
+            byte[] bytes = Write(document);
+            using JsonDocument json = JsonDocument.Parse(bytes);
+            JsonElement[] elements = json.RootElement.GetProperty("elements").EnumerateArray().ToArray();
+            elements[0].EnumerateObject().Select(p => p.Name).Should().Equal("cls", "revit_id", "polygons", "text");
+            elements[1].EnumerateObject().Select(p => p.Name).Should().Equal("cls", "revit_id", "polygons", "kind");
+
+            GeomDocument back = GeomJsonReader.Read(new MemoryStream(bytes));
+            back.Elements[0].Text.Should().Be("SALA");
+            back.Elements[0].Kind.Should().BeNull();
+            back.Elements[1].Kind.Should().Be("Toilet");
+        }
+
+        [Fact]
+        public void Read_ClosedArrayOfTheWrongLength_IsInvalid()
+        {
+            Action act = () => Read("{" + ValidView + ", " + ValidTransform + @", ""elements"": [{""cls"": ""grid"", ""revit_id"": 1, ""polylines"": [[[0,0],[1,0]]], ""closed"": [true, false], ""stroke_m"": 0.04}], ""warnings"": []}");
+
+            act.Should().ThrowExactly<InvalidDataException>();
+        }
+
+        [Fact]
         public void Write_FollowsTheContractKeyOrderAndNames()
         {
             using JsonDocument json = JsonDocument.Parse(Write(SpecExample()));

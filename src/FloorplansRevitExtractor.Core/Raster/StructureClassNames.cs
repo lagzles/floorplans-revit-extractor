@@ -21,6 +21,13 @@ namespace FloorplansRevitExtractor.Core.Raster
             [StructureClass.Furniture] = "furniture",
             [StructureClass.Swing] = "swing",
             [StructureClass.Void] = "void",
+            [StructureClass.Grid] = "grid",
+            [StructureClass.Dimension] = "dimension",
+            [StructureClass.Passage] = "passage",
+            [StructureClass.Text] = "text",
+            [StructureClass.LowWall] = "low_wall",
+            [StructureClass.CurtainWall] = "curtain_wall",
+            [StructureClass.Fixture] = "fixture",
         };
 
         private static readonly IReadOnlyDictionary<string, StructureClass> ClassByName =
@@ -31,14 +38,16 @@ namespace FloorplansRevitExtractor.Core.Raster
         public static bool TryParse(string name, out StructureClass cls) => ClassByName.TryGetValue(name, out cls);
 
         /// <summary>
-        /// Spec v2: every Room is painted 1 room, except type stairs (6) and
-        /// void (9). An unmapped name is still floor in the mask; the label
-        /// is what flags it.
+        /// Spec v4: every Room is painted 1 room, except type stairs (6), void
+        /// (9) and patio (0: open to the sky, the generator leaves it
+        /// background, so the room is not painted at all). An unmapped name is
+        /// still floor in the mask; the label is what flags it.
         /// </summary>
         public static StructureClass ForRoomType(string? roomType) => roomType switch
         {
             "stairs" => StructureClass.Stair,
             "void" => StructureClass.Void,
+            "patio" => StructureClass.Background,
             _ => StructureClass.Room,
         };
     }

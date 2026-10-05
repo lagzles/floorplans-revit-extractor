@@ -26,6 +26,12 @@ namespace FloorplansRevitExtractor.Core.Sample
 
         public const string ImageExtension = ".png";
 
+        /// <summary>Spec v3: qa/NNNNNN_anotacao.png, grid and dimension alone over a lightened image.</summary>
+        public const string AnnotationQaSuffix = "_anotacao.png";
+
+        /// <summary>Spec v4: qa/NNNNNN_novas.png, passage, low_wall, curtain_wall and fixture alone.</summary>
+        public const string NewClassesQaSuffix = "_novas.png";
+
         /// <summary>The per-sample files: folder, extension.</summary>
         internal static readonly (string Folder, string Extension)[] PerSample =
         {
@@ -35,6 +41,8 @@ namespace FloorplansRevitExtractor.Core.Sample
             (Labels, ".json"),
             (Geometry, ".json"),
             (Qa, ".png"),
+            (Qa, AnnotationQaSuffix),
+            (Qa, NewClassesQaSuffix),
             (Reports, ".json"),
         };
 

@@ -27,7 +27,10 @@ namespace FloorplansRevitExtractor.Core.Raster
             if (element.Polylines.Count > 0)
             {
                 int widthPx = StrokeRasterizer.WidthInPixels(element.StrokeM!.Value, t.PxPerM);
-                return MaskElement.Stroked(element.Class, element.Polylines.Select(line => ToPixels(line, t)).ToList(), widthPx);
+                return MaskElement.Stroked(
+                    element.Class,
+                    element.Polylines.Select((line, i) => ToPixels(Closing(line, element.Closed, i), t)).ToList(),
+                    widthPx);
             }
 
             return MaskElement.Filled(element.Class, ToShapes(element, t));
@@ -65,6 +68,10 @@ namespace FloorplansRevitExtractor.Core.Raster
                 .Select((polygon, i) => new PolygonShape(ToPixels(polygon, t), holesByPolygon[i]))
                 .ToList();
         }
+
+        /// <summary>A closed polyline (a grid bubble) gets its first point again at the end, so the stroke has no gap.</summary>
+        private static IReadOnlyList<Point2D> Closing(IReadOnlyList<Point2D> line, IReadOnlyList<bool> closed, int index) =>
+            index < closed.Count && closed[index] && line.Count > 2 ? line.Concat(new[] { line[0] }).ToArray() : line;
 
         private static IReadOnlyList<Point2D> ToPixels(IReadOnlyList<Point2D> ring, PixelTransform t) =>
             ring.Select(t.ToPixel).ToArray();

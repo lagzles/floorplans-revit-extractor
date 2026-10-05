@@ -17,6 +17,9 @@ namespace FloorplansRevitExtractor.Core.Label
         /// <summary>v1: a window whose sill is at 1.50 m or more is "high".</summary>
         public const double HighSillM = 1.50;
 
+        /// <summary>The generator's CURTAIN_WALL_MIN_WIDTH: a window this wide or wider is glass skin (spec v4).</summary>
+        public const double CurtainWallMinWidthM = 3.0;
+
         // First match wins: the more specific kinds come first ("double sliding" is sliding).
         private static readonly (string Kind, string[] Keywords)[] DoorKeywords =
         {
@@ -29,6 +32,7 @@ namespace FloorplansRevitExtractor.Core.Label
 
         private static readonly (string Kind, string[] Keywords)[] WindowKeywords =
         {
+            ("curtain", new[] { "CURTAIN", "STOREFRONT", "PELE DE VIDRO", "FACHADA CORTINA" }),
             ("sliding", new[] { "SLIDING", "SLIDER", "CORRER" }),
             ("double", new[] { "DOUBLE", "DUPLA", "DUPLO", "2 FOLHAS", "DUAS FOLHAS" }),
         };
@@ -51,14 +55,28 @@ namespace FloorplansRevitExtractor.Core.Label
 
         public static string WindowKind(string familyName, string typeName, double? sillHeightM)
         {
-            if (sillHeightM >= HighSillM)
+            string names = Normalize(familyName + " " + typeName);
+            string? kind = WindowKeywords.FirstOrDefault(k => k.Keywords.Any(names.Contains)).Kind;
+            if (kind == "curtain")
             {
-                return "high";
+                return kind;
             }
 
-            string names = Normalize(familyName + " " + typeName);
-            return WindowKeywords.FirstOrDefault(k => k.Keywords.Any(names.Contains)).Kind ?? "single";
+            return sillHeightM >= HighSillM ? "high" : kind ?? "single";
         }
+
+        /// <summary>The generator's is_curtain_wall: kind "curtain", or 3.0 m wide or more.</summary>
+        public static bool IsCurtainWall(string windowKind, double widthM) =>
+            windowKind == "curtain" || widthM >= CurtainWallMinWidthM;
+
+        /// <summary>
+        /// The generator's door_mask_class (spec v4 section 4.2): an opening with
+        /// no leaf is 12 passage. A "passage" family is one; a hinged door whose
+        /// view geometry draws no leaf or arc is one too. Sliding doors and gates
+        /// have a leaf.
+        /// </summary>
+        public static string DoorKindForMask(string kind, bool drawsLeaf) =>
+            kind == "passage" || (LabelVocabularies.HasHinge(kind) && !drawsLeaf) ? "passage" : kind;
 
         /// <summary>The label's rotation: direction angle in degrees, [0, 360), 0 along +X.</summary>
         public static double RotationDegrees(Vector2D direction)

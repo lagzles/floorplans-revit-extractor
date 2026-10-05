@@ -32,7 +32,8 @@ namespace FloorplansRevitExtractor.Commands
             }
 
             Document doc = uiDoc.Document;
-            string outDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "floorplans-dataset");
+            // Not under Documents: it is often redirected to OneDrive, whose sync locks files mid-write.
+            string outDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "floorplans-dataset");
             try
             {
                 ViewSetup setup = ViewSetup.Read(uiDoc.ActiveView);

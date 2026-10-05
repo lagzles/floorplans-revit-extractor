@@ -159,6 +159,130 @@ namespace FloorplansRevitExtractor.Core.Tests.Raster
             act.Should().Throw<ArgumentOutOfRangeException>();
         }
 
+        private static MaskElement Line(StructureClass cls, double x0, double y0, double x1, double y1) =>
+            MaskElement.Stroked(cls, new[] { (IReadOnlyList<Point2D>)new[] { new Point2D(x0, y0), new Point2D(x1, y1) } }, 2.0);
+
+        [Fact]
+        public void Paint_GridCrossingAWall_LeavesTheWallIntact()
+        {
+            // Spec v3: painting the wall with the grid would teach the model to open the wall under every grid line.
+            SemanticMask mask = SemanticMaskPainter.Paint(20, 10, new[]
+            {
+                Filled(StructureClass.Room, 0, 0, 20, 10),
+                Filled(StructureClass.Wall, 8, 0, 10, 10),
+                Line(StructureClass.Grid, 0, 5, 20, 5),
+            });
+
+            At(mask, 9, 5).Should().Be((byte)StructureClass.Wall);
+            At(mask, 3, 5).Should().Be((byte)StructureClass.Grid);
+        }
+
+        [Fact]
+        public void Paint_Annotation_GoesOverBackgroundAndRoomOnly()
+        {
+            SemanticMask mask = SemanticMaskPainter.Paint(30, 10, new[]
+            {
+                Filled(StructureClass.Room, 10, 0, 30, 10),
+                Filled(StructureClass.Stair, 12, 0, 14, 10),
+                Filled(StructureClass.Void, 15, 0, 16, 10),
+                Filled(StructureClass.Pillar, 17, 0, 18, 10),
+                Filled(StructureClass.Furniture, 19, 0, 20, 10),
+                Filled(StructureClass.Door, 21, 0, 22, 10),
+                Line(StructureClass.Dimension, 0, 5, 30, 5),
+            });
+
+            At(mask, 3, 5).Should().Be((byte)StructureClass.Dimension, "over background");
+            At(mask, 11, 5).Should().Be((byte)StructureClass.Dimension, "over room");
+            new[] { 13, 15, 17, 19, 21 }.Select(x => At(mask, x, 5))
+                .Should().Equal((byte)StructureClass.Stair, (byte)StructureClass.Void, (byte)StructureClass.Pillar, (byte)StructureClass.Furniture, (byte)StructureClass.Door);
+        }
+
+        [Fact]
+        public void Paint_DimensionCrossingAGrid_StaysGrid()
+        {
+            // Spec v4: annotation in the generator's order (grid, dimension, text), first painted wins.
+            SemanticMask mask = SemanticMaskPainter.Paint(20, 20, new[]
+            {
+                Line(StructureClass.Grid, 10, 0, 10, 20),
+                Line(StructureClass.Dimension, 0, 10, 20, 10),
+            });
+
+            At(mask, 9, 9).Should().Be((byte)StructureClass.Grid);
+            At(mask, 3, 9).Should().Be((byte)StructureClass.Dimension);
+        }
+
+        [Fact]
+        public void Paint_TextTouchingADimension_StaysDimension()
+        {
+            SemanticMask mask = SemanticMaskPainter.Paint(20, 20, new[]
+            {
+                Line(StructureClass.Dimension, 0, 10, 20, 10),
+                Filled(StructureClass.Text, 4, 6, 12, 14),
+            });
+
+            At(mask, 8, 9).Should().Be((byte)StructureClass.Dimension);
+            At(mask, 8, 7).Should().Be((byte)StructureClass.Text);
+        }
+
+        [Fact]
+        public void Paint_TextOverFurniture_LeavesTheFurniture()
+        {
+            SemanticMask mask = SemanticMaskPainter.Paint(10, 10, new[]
+            {
+                Filled(StructureClass.Room, 0, 0, 10, 10),
+                Filled(StructureClass.Furniture, 0, 0, 5, 10),
+                Filled(StructureClass.Text, 3, 4, 8, 6),
+            });
+
+            At(mask, 4, 5).Should().Be((byte)StructureClass.Furniture);
+            At(mask, 6, 5).Should().Be((byte)StructureClass.Text);
+        }
+
+        [Fact]
+        public void Paint_GuardrailAgainstAWall_LeavesTheWall()
+        {
+            SemanticMask mask = SemanticMaskPainter.Paint(10, 10, new[]
+            {
+                Filled(StructureClass.Room, 0, 2, 10, 10),
+                Filled(StructureClass.Wall, 0, 0, 4, 10),
+                Line(StructureClass.LowWall, 0, 5, 10, 5),
+            });
+
+            At(mask, 2, 5).Should().Be((byte)StructureClass.Wall);
+            At(mask, 7, 5).Should().Be((byte)StructureClass.LowWall);
+        }
+
+        [Fact]
+        public void Paint_SinkOnACounter_IsFixture_AndFixtureStaysOffTheWall()
+        {
+            SemanticMask mask = SemanticMaskPainter.Paint(10, 10, new[]
+            {
+                Filled(StructureClass.Room, 0, 2, 10, 10),
+                Filled(StructureClass.Wall, 0, 0, 10, 2),
+                Filled(StructureClass.Furniture, 0, 1, 10, 5), // counter drawn as loose furniture
+                Filled(StructureClass.Fixture, 3, 1, 6, 4),
+            });
+
+            At(mask, 4, 3).Should().Be((byte)StructureClass.Fixture);
+            At(mask, 8, 3).Should().Be((byte)StructureClass.Furniture);
+            At(mask, 4, 1).Should().Be((byte)StructureClass.Wall);
+        }
+
+        [Fact]
+        public void Paint_PassageCutsTheWall_AndCurtainWallReplacesIt()
+        {
+            SemanticMask mask = SemanticMaskPainter.Paint(10, 10, new[]
+            {
+                Filled(StructureClass.Wall, 0, 0, 10, 2),
+                Filled(StructureClass.CurtainWall, 6, 0, 10, 2),
+                Filled(StructureClass.Passage, 1, 0, 3, 2),
+            });
+
+            At(mask, 2, 1).Should().Be((byte)StructureClass.Passage);
+            At(mask, 4, 1).Should().Be((byte)StructureClass.Wall);
+            At(mask, 8, 1).Should().Be((byte)StructureClass.CurtainWall);
+        }
+
         [Fact]
         public void Paint_BackgroundElement_IsRejected()
         {

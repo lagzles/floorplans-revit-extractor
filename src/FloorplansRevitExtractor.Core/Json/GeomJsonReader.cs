@@ -20,7 +20,7 @@ namespace FloorplansRevitExtractor.Core.Json
         private static readonly string[] RootKeys = { "view", "transform", "elements", "warnings" };
         private static readonly string[] ViewKeys = { "id", "name", "scale", "cut_plane_m" };
         private static readonly string[] TransformKeys = { "x0", "y1", "px_per_m", "width", "height" };
-        private static readonly string[] ElementKeys = { "cls", "revit_id", "polygons", "holes", "polylines", "stroke_m" };
+        private static readonly string[] ElementKeys = { "cls", "revit_id", "polygons", "holes", "polylines", "closed", "stroke_m", "kind", "text" };
         private static readonly string[] WarningKeys = { "revit_id", "msg" };
 
         public static GeomDocument Read(Stream input)
@@ -91,10 +91,17 @@ namespace FloorplansRevitExtractor.Core.Json
             }
 
             long revitId = Int64(Property(e, "revit_id", path), $"{path}.revit_id");
+            string? kind = e.TryGetProperty("kind", out JsonElement kindValue) ? NonEmptyString(kindValue, $"{path}.kind") : null;
+            string? text = e.TryGetProperty("text", out JsonElement textValue) ? NonEmptyString(textValue, $"{path}.text") : null;
             bool hasPolygons = e.TryGetProperty("polygons", out JsonElement polygons);
             bool hasHoles = e.TryGetProperty("holes", out JsonElement holes);
             bool hasPolylines = e.TryGetProperty("polylines", out JsonElement polylines);
             bool hasStroke = e.TryGetProperty("stroke_m", out JsonElement stroke);
+            bool hasClosed = e.TryGetProperty("closed", out JsonElement closed);
+            if (hasClosed && !hasPolylines)
+            {
+                throw new InvalidDataException($"{path}: closed without polylines.");
+            }
 
             if (hasPolylines)
             {
@@ -110,7 +117,8 @@ namespace FloorplansRevitExtractor.Core.Json
 
                 IReadOnlyList<IReadOnlyList<Point2D>> lines = Rings(polylines, $"{path}.polylines", GeomElement.MinPolylinePoints);
                 double strokeM = FiniteDouble(stroke, $"{path}.stroke_m");
-                return Construct(path, () => GeomElement.Stroked(cls, revitId, lines, strokeM));
+                bool[]? flags = hasClosed ? RequireArray(closed, $"{path}.closed").Select((c, i) => Bool(c, $"{path}.closed[{i}]")).ToArray() : null;
+                return Construct(path, () => GeomElement.Stroked(cls, revitId, lines, strokeM, flags).WithLabel(kind, text));
             }
 
             if (hasStroke)
@@ -127,7 +135,7 @@ namespace FloorplansRevitExtractor.Core.Json
             IReadOnlyList<IReadOnlyList<Point2D>>? holeRings = hasHoles
                 ? Rings(holes, $"{path}.holes", GeomElement.MinPolygonPoints)
                 : null;
-            return Construct(path, () => GeomElement.Filled(cls, revitId, rings, holeRings));
+            return Construct(path, () => GeomElement.Filled(cls, revitId, rings, holeRings).WithLabel(kind, text));
         }
 
         private static GeomWarning ReadWarning(JsonElement value, string path)
@@ -228,6 +236,11 @@ namespace FloorplansRevitExtractor.Core.Json
                 && !double.IsInfinity(result)
                 ? result
                 : throw new InvalidDataException($"{path} must be a finite number, got {value.GetRawText()}.");
+
+        private static bool Bool(JsonElement value, string path) =>
+            value.ValueKind == JsonValueKind.True || value.ValueKind == JsonValueKind.False
+                ? value.GetBoolean()
+                : throw new InvalidDataException($"{path} must be true or false, got {value.GetRawText()}.");
 
         private static string NonEmptyString(JsonElement value, string path)
         {

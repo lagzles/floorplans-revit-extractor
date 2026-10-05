@@ -91,7 +91,29 @@ namespace FloorplansRevitExtractor.Core.Json
             if (element.Polylines.Count > 0)
             {
                 WriteRings(writer, "polylines", element.Polylines);
+                if (element.Class == StructureClass.Grid || element.Class == StructureClass.Dimension || element.Class == StructureClass.LowWall)
+                {
+                    // Spec v3/v4: annotation and guardrail strokes say which polylines close (the grid bubble).
+                    writer.WriteStartArray("closed");
+                    foreach (bool closed in element.Closed)
+                    {
+                        writer.WriteBooleanValue(closed);
+                    }
+
+                    writer.WriteEndArray();
+                }
+
                 WriteExact(writer, "stroke_m", element.StrokeM!.Value);
+            }
+
+            if (element.Kind != null)
+            {
+                writer.WriteString("kind", element.Kind);
+            }
+
+            if (element.Text != null)
+            {
+                writer.WriteString("text", element.Text);
             }
 
             writer.WriteEndObject();

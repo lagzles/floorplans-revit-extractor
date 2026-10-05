@@ -12,6 +12,9 @@ namespace FloorplansRevitExtractor.RevitInterop
         internal static double ToMeters(double feet) =>
             UnitUtils.ConvertFromInternalUnits(feet, UnitTypeId.Meters);
 
+        internal static double ToFeet(double meters) =>
+            UnitUtils.ConvertToInternalUnits(meters, UnitTypeId.Meters);
+
         internal static double SquareFeetToSquareMeters(double squareFeet) =>
             UnitUtils.ConvertFromInternalUnits(squareFeet, UnitTypeId.SquareMeters);
 

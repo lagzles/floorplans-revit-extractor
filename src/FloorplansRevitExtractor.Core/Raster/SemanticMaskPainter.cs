@@ -5,7 +5,7 @@ using System.Linq;
 namespace FloorplansRevitExtractor.Core.Raster
 {
     /// <summary>
-    /// Paints the semantic mask in the spec v2 layer order, writing spans
+    /// Paints the semantic mask in the spec v4 layer order (section 5), writing spans
     /// straight into the final buffer. Within a layer, painting is
     /// idempotent (and the stencil only ever turns room pixels into the
     /// layer), so the input order never changes the result. Swapping any
@@ -14,27 +14,52 @@ namespace FloorplansRevitExtractor.Core.Raster
     /// </summary>
     public static class SemanticMaskPainter
     {
+        /// <remarks>
+        /// The generator paints a window 3.0 m or wider as curtain_wall in the
+        /// window step; here every curtain_wall is painted with the walls. The
+        /// two differ only where a pillar overlaps a wide window.
+        /// </remarks>
         private static readonly StructureClass[] PaintOrder =
         {
             StructureClass.Room,
             StructureClass.Stair,
             StructureClass.Void,
             StructureClass.Wall,
+            StructureClass.CurtainWall, // same step as the wall
+            StructureClass.LowWall, // stencil: background or room only, so the wall it meets stays
             StructureClass.Pillar, // after the wall, or embedded pillars disappear
             StructureClass.Furniture, // stencil: room pixels only
-            StructureClass.Swing, // stencil: room pixels only, so furniture stays
+            StructureClass.Fixture, // stencil: room pixels before furniture, so a sink on a counter is fixture
+            StructureClass.Swing, // stencil: room pixels only, so furniture and fixtures stay
             StructureClass.Window, // openings cut the wall
             StructureClass.Door,
+            StructureClass.Passage,
+            StructureClass.Grid, // annotation last, each over background or room only:
+            StructureClass.Dimension, // where a dimension crosses a grid, the grid stays
+            StructureClass.Text, // and where text touches a dimension, the dimension stays
         };
 
+        private static readonly StructureClass[] FloorOrBackground = { StructureClass.Background, StructureClass.Room };
+
         /// <summary>
-        /// Painting furniture or a swing over a wall would open a hole in it,
-        /// teaching the model that cabinets create openings.
+        /// Layers that may only paint over some classes. Furniture or a swing
+        /// over a wall would open a hole in it, teaching the model that cabinets
+        /// create openings; a grid, dimension or text over a wall would teach it
+        /// to open the wall under every grid line. Construction always wins over
+        /// annotation, so under an annotation pixel there is only background or
+        /// room, which keeps the 10-class fold exact. Fixture may also take a
+        /// furniture pixel: furniture only ever paints room, so that pixel was
+        /// room when the furniture step began, as the generator's stencil reads.
         /// </summary>
-        private static readonly HashSet<StructureClass> RoomStencilled = new HashSet<StructureClass>
+        private static readonly Dictionary<StructureClass, StructureClass[]> PaintsOnlyOver = new Dictionary<StructureClass, StructureClass[]>
         {
-            StructureClass.Furniture,
-            StructureClass.Swing,
+            [StructureClass.LowWall] = FloorOrBackground,
+            [StructureClass.Furniture] = new[] { StructureClass.Room },
+            [StructureClass.Fixture] = new[] { StructureClass.Room, StructureClass.Furniture },
+            [StructureClass.Swing] = new[] { StructureClass.Room },
+            [StructureClass.Grid] = FloorOrBackground,
+            [StructureClass.Dimension] = FloorOrBackground,
+            [StructureClass.Text] = FloorOrBackground,
         };
 
         public static SemanticMask Paint(int width, int height, IReadOnlyList<MaskElement> elements)
@@ -71,7 +96,7 @@ namespace FloorplansRevitExtractor.Core.Raster
         private static SpanWriter LayerWriter(byte[] pixels, int width, StructureClass layer)
         {
             var value = (byte)layer;
-            if (!RoomStencilled.Contains(layer))
+            if (!PaintsOnlyOver.TryGetValue(layer, out StructureClass[] under))
             {
                 return (row, first, last) =>
                 {
@@ -83,12 +108,18 @@ namespace FloorplansRevitExtractor.Core.Raster
                 };
             }
 
+            var allowed = new bool[256];
+            foreach (StructureClass cls in under)
+            {
+                allowed[(byte)cls] = true;
+            }
+
             return (row, first, last) =>
             {
                 int rowStart = row * width;
                 for (int x = first; x <= last; x++)
                 {
-                    if (pixels[rowStart + x] == (byte)StructureClass.Room)
+                    if (allowed[pixels[rowStart + x]])
                     {
                         pixels[rowStart + x] = value;
                     }

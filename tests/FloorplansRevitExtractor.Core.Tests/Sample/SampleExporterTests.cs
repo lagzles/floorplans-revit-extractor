@@ -43,6 +43,7 @@ namespace FloorplansRevitExtractor.Core.Tests.Sample
             }
 
             Directory.Exists(P(".staging")).Should().BeFalse("staging is cleaned up");
+            File.Exists(P("qa", "900001_anotacao.png")).Should().BeTrue("spec v3: a QA image of grid and dimension alone");
         }
 
         [Fact]
@@ -69,7 +70,7 @@ namespace FloorplansRevitExtractor.Core.Tests.Sample
             SampleExporter.Export(_out, Request(viewKey: "999"));
 
             JsonElement manifest = Json("manifest.json");
-            manifest.GetProperty("num_classes").GetInt32().Should().Be(10);
+            manifest.GetProperty("num_classes").GetInt32().Should().Be(17);
             manifest.GetProperty("ignore_index").GetInt32().Should().Be(255);
             manifest.GetProperty("image_ext").GetString().Should().Be(".png");
             manifest.GetProperty("mask_mode").GetString().Should().Be("structure");
@@ -78,7 +79,9 @@ namespace FloorplansRevitExtractor.Core.Tests.Sample
             manifest.GetProperty("splits").GetProperty("train").GetArrayLength().Should().Be(0);
 
             JsonElement classes = Json("classes.json");
-            classes.GetArrayLength().Should().Be(10);
+            classes.GetArrayLength().Should().Be(17);
+            classes[10].GetProperty("name").GetString().Should().Be("grid");
+            classes[11].GetProperty("color").EnumerateArray().Select(c => c.GetInt32()).Should().Equal(255, 140, 0);
             classes[8].GetProperty("name").GetString().Should().Be("swing");
             classes[8].GetProperty("color").EnumerateArray().Select(c => c.GetInt32()).Should().Equal(235, 110, 175);
         }

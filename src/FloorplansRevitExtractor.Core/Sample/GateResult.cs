@@ -7,7 +7,11 @@ namespace FloorplansRevitExtractor.Core.Sample
 
     /// <param name="WallInk">Share of wall pixels on dark ink (gray &lt; 160), or null without wall pixels.</param>
     /// <param name="RoomInk">Same, under room pixels.</param>
-    public sealed record GateMetrics(double WallFraction, double OpeningFraction, double? WallInk, double? RoomInk);
+    /// <param name="ClassPixels">Pixel count per class id (spec v3: the report counts grid and dimension too).</param>
+    public sealed record GateMetrics(double WallFraction, double OpeningFraction, double? WallInk, double? RoomInk)
+    {
+        public IReadOnlyList<int> ClassPixels { get; init; } = new int[0];
+    }
 
     /// <summary>
     /// The acceptance gate's verdict: any rejection keeps the sample out of

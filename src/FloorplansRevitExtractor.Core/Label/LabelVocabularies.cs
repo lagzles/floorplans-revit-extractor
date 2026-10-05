@@ -15,7 +15,8 @@ namespace FloorplansRevitExtractor.Core.Label
         /// <summary>The generator gives a hinge to these door kinds only.</summary>
         private static readonly HashSet<string> HingedDoorKindSet = Set("single", "double");
 
-        private static readonly HashSet<string> WindowKindSet = Set("single", "double", "sliding", "high");
+        /// <summary>Spec v4 adds "curtain": a curtain wall panel or storefront.</summary>
+        private static readonly HashSet<string> WindowKindSet = Set("single", "double", "sliding", "high", "curtain");
 
         private static readonly HashSet<string> FurnitureKindSet = Set(
             "Armchair", "BathSink", "Bathtub", "Bed", "Bench", "Chair", "CoffeeTable", "Counter", "Desk",

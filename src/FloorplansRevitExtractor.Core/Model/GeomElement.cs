@@ -25,7 +25,8 @@ namespace FloorplansRevitExtractor.Core.Model
             IReadOnlyList<IReadOnlyList<Point2D>> polygons,
             IReadOnlyList<IReadOnlyList<Point2D>> holes,
             IReadOnlyList<IReadOnlyList<Point2D>> polylines,
-            double? strokeM)
+            double? strokeM,
+            IReadOnlyList<bool> closed)
         {
             if (cls == StructureClass.Background)
             {
@@ -38,6 +39,7 @@ namespace FloorplansRevitExtractor.Core.Model
             Holes = holes;
             Polylines = polylines;
             StrokeM = strokeM;
+            Closed = closed;
         }
 
         public StructureClass Class { get; }
@@ -52,6 +54,23 @@ namespace FloorplansRevitExtractor.Core.Model
 
         public double? StrokeM { get; }
 
+        /// <summary>Per polyline: true when it closes back on its first point (a grid bubble). Empty for filled elements.</summary>
+        public IReadOnlyList<bool> Closed { get; }
+
+        /// <summary>Spec v4: the generator's kind for a fixture or furniture element (e.g. "Toilet"); null when not recorded.</summary>
+        public string? Kind { get; private set; }
+
+        /// <summary>Spec v4: the characters inside a text box (text, dimension value, grid letter); null when not recorded.</summary>
+        public string? Text { get; private set; }
+
+        /// <summary>A copy carrying the kind and text; null or blank values are not recorded.</summary>
+        public GeomElement WithLabel(string? kind, string? text) =>
+            new GeomElement(Class, RevitId, Polygons, Holes, Polylines, StrokeM, Closed)
+            {
+                Kind = string.IsNullOrWhiteSpace(kind) ? null : kind,
+                Text = string.IsNullOrWhiteSpace(text) ? null : text,
+            };
+
         public static GeomElement Filled(
             StructureClass cls,
             long revitId,
@@ -65,14 +84,15 @@ namespace FloorplansRevitExtractor.Core.Model
             }
 
             IReadOnlyList<IReadOnlyList<Point2D>> holeCopy = holes == null ? NoRings : CopyRings(holes, MinPolygonPoints, nameof(holes));
-            return new GeomElement(cls, revitId, polygonCopy, holeCopy, NoRings, null);
+            return new GeomElement(cls, revitId, polygonCopy, holeCopy, NoRings, null, new bool[0]);
         }
 
         public static GeomElement Stroked(
             StructureClass cls,
             long revitId,
             IReadOnlyList<IReadOnlyList<Point2D>> polylines,
-            double strokeM)
+            double strokeM,
+            IReadOnlyList<bool>? closed = null)
         {
             if (!(strokeM > 0) || double.IsInfinity(strokeM))
             {
@@ -85,7 +105,13 @@ namespace FloorplansRevitExtractor.Core.Model
                 throw new ArgumentException("A stroked element needs at least one polyline.", nameof(polylines));
             }
 
-            return new GeomElement(cls, revitId, NoRings, NoRings, polylineCopy, strokeM);
+            bool[] closedCopy = closed?.ToArray() ?? new bool[polylineCopy.Count];
+            if (closedCopy.Length != polylineCopy.Count)
+            {
+                throw new ArgumentException($"closed has {closedCopy.Length} flags for {polylineCopy.Count} polylines.", nameof(closed));
+            }
+
+            return new GeomElement(cls, revitId, NoRings, NoRings, polylineCopy, strokeM, closedCopy);
         }
 
         private static IReadOnlyList<IReadOnlyList<Point2D>> CopyRings(

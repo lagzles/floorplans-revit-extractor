@@ -12,7 +12,8 @@ namespace FloorplansRevitExtractor.Core.Tests.Raster
         public void Names_MatchTheFrozenClassesJsonContract()
         {
             Enum.GetValues(typeof(StructureClass)).Cast<StructureClass>().Select(StructureClassNames.ToName)
-                .Should().Equal("background", "room", "wall", "door", "window", "pillar", "stair", "furniture", "swing", "void");
+                .Should().Equal("background", "room", "wall", "door", "window", "pillar", "stair", "furniture", "swing", "void", "grid", "dimension",
+                    "passage", "text", "low_wall", "curtain_wall", "fixture");
         }
 
         [Fact]
@@ -32,9 +33,10 @@ namespace FloorplansRevitExtractor.Core.Tests.Raster
         [InlineData("stairs", StructureClass.Stair)]
         [InlineData("void", StructureClass.Void)]
         [InlineData("bedroom", StructureClass.Room)]
-        [InlineData("patio", StructureClass.Room)]
+        [InlineData("patio", StructureClass.Background)] // spec v4: open to the sky, left unpainted
+        [InlineData("terrace", StructureClass.Room)]
         [InlineData(null, StructureClass.Room)] // unmapped name: still floor in the mask
-        public void ForRoomType_OnlyStairsAndVoidLeaveTheRoomClass(string? roomType, StructureClass expected)
+        public void ForRoomType_OnlyStairsVoidAndPatioLeaveTheRoomClass(string? roomType, StructureClass expected)
         {
             StructureClassNames.ForRoomType(roomType).Should().Be(expected);
         }

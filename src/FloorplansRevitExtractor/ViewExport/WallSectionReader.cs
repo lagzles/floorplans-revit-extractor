@@ -22,9 +22,11 @@ namespace FloorplansRevitExtractor.ViewExport
     /// <summary>
     /// Walls enter the mask by their section at the cut plane, with real
     /// thickness (spec v2, see <see cref="CutSection"/>). A thickness step
-    /// shows as a step; a multi-layer wall is one polygon; a wall that does
-    /// not reach the cut plane is not cut and not in the mask. Curtain walls are left out until the open question on
-    /// them is decided.
+    /// shows as a step; a multi-layer wall is one polygon. Spec v4: a curtain
+    /// wall at the cut plane is 15 curtain_wall, its outline (location line by
+    /// its thickness, widened to 2 px when thinner: the only widening the spec
+    /// allows); a wall whose top is below the cut plane (parapet, low wall) is
+    /// 14 low_wall, its plan outline with its real thickness.
     /// </summary>
     internal static class WallSectionReader
     {
@@ -42,6 +44,8 @@ namespace FloorplansRevitExtractor.ViewExport
             var exterior = new List<double>();
             var interior = new List<double>();
             int curtain = 0;
+            int curtainWidened = 0;
+            int low = 0;
             int uncut = 0;
 
             FilteredElementCollector collector = new FilteredElementCollector(doc, setup.View.Id).OfClass(typeof(Wall));
@@ -58,8 +62,18 @@ namespace FloorplansRevitExtractor.ViewExport
 
             ElementGuard.Each(walls, warnings, wall =>
             {
+                BoundingBoxXYZ box = wall.get_BoundingBox(null);
                 if (wall.WallType.Kind == WallKind.Curtain)
                 {
+                    if (box == null || box.Min.Z > setup.CutPlaneZFeet || box.Max.Z < setup.CutPlaneZFeet)
+                    {
+                        uncut++;
+                        return;
+                    }
+
+                    double thicknessM = Math.Max(UnitsConverter.ToMeters(wall.Width), MinWallPx / pxPerM);
+                    curtainWidened += UnitsConverter.ToMeters(wall.Width) * pxPerM < MinWallPx ? 1 : 0;
+                    AddOutline(elements, StructureClass.CurtainWall, wall, thicknessM, setup);
                     curtain++;
                     return;
                 }
@@ -67,7 +81,16 @@ namespace FloorplansRevitExtractor.ViewExport
                 (List<IReadOnlyList<Point2D>> outers, List<IReadOnlyList<Point2D>> holes) = CutSection.Of(wall, setup, warnings);
                 if (outers.Count == 0)
                 {
-                    uncut++;
+                    bool belowCut = box != null && box.Max.Z < setup.CutPlaneZFeet && box.Max.Z >= setup.BottomZFeet;
+                    if (belowCut && AddOutline(elements, StructureClass.LowWall, wall, UnitsConverter.ToMeters(wall.Width), setup))
+                    {
+                        low++;
+                    }
+                    else
+                    {
+                        uncut++;
+                    }
+
                     return;
                 }
 
@@ -84,12 +107,18 @@ namespace FloorplansRevitExtractor.ViewExport
             var notes = new List<string>();
             if (curtain > 0)
             {
-                notes.Add($"{curtain} parede(s)-cortina deixada(s) fora da máscara (pergunta em aberto do spec).");
+                notes.Add($"{curtain} parede(s)-cortina como pele de vidro (15)"
+                    + (curtainWidened > 0 ? $"; {curtainWidened} engrossada(s) para 2 px." : "."));
+            }
+
+            if (low > 0)
+            {
+                notes.Add($"{low} parede(s) abaixo do plano de corte como mureta (14), pelo contorno em projeção.");
             }
 
             if (uncut > 0)
             {
-                notes.Add($"{uncut} parede(s) visível(is) não chega(m) ao plano de corte e ficou(aram) fora da máscara.");
+                notes.Add($"{uncut} parede(s) visível(is) fora do plano de corte e acima do fundo da vista ficaram fora da máscara.");
             }
 
             return new WallReading(
@@ -100,6 +129,33 @@ namespace FloorplansRevitExtractor.ViewExport
                 Median(interior),
                 interior.Count == 0 ? (double?)null : interior.Min(),
                 interior.Count == 0 ? (bool?)null : interior.Any(w => w < ThinPartitionM));
+        }
+
+        /// <summary>
+        /// The wall's plan outline: its location line offset to both sides by
+        /// half the thickness. Joins and end caps are not drawn, which is close
+        /// enough for curtain walls and parapets.
+        /// </summary>
+        private static bool AddOutline(List<GeomElement> elements, StructureClass cls, Wall wall, double thicknessM, ViewSetup setup)
+        {
+            if (!(wall.Location is LocationCurve location) || !location.Curve.IsBound)
+            {
+                return false;
+            }
+
+            double half = UnitsConverter.ToFeet(thicknessM) / 2;
+            Curve curve = location.Curve;
+            IList<XYZ> left = curve.CreateOffset(half, XYZ.BasisZ).Tessellate();
+            IList<XYZ> right = curve.CreateOffset(-half, XYZ.BasisZ).Tessellate();
+            IReadOnlyList<Point2D> ring = left.Concat(right.Reverse()).Select(setup.ToFrame).ToArray();
+            List<IReadOnlyList<Point2D>> clipped = CutSection.Clip(new[] { ring }, setup.ModelRegion);
+            if (clipped.Count == 0)
+            {
+                return false;
+            }
+
+            elements.Add(GeomElement.Filled(cls, wall.Id.Value, clipped));
+            return true;
         }
 
         private static double? Median(List<double> values)

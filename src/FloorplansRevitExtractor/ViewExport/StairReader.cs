@@ -16,8 +16,10 @@ namespace FloorplansRevitExtractor.ViewExport
     /// (GetFootprintBoundary), painted as one filled area: the treads drawn
     /// stay in the image only (spec v2). A stair that crosses levels keeps
     /// only what this view shows: the components between the bottom of the
-    /// view range and its cut plane. Legacy sketch-based stairs and ramps have no
-    /// components and are noted, not guessed.
+    /// view range and its cut plane. Sketched (non-component) stairs have no
+    /// run footprints: their upward faces projected to plan stand in. A ramp
+    /// is sloped floor with no steps (spec v4, is_ramp): 1 room, by the same
+    /// projected faces.
     /// </summary>
     internal static class StairReader
     {
@@ -25,8 +27,6 @@ namespace FloorplansRevitExtractor.ViewExport
         {
             var elements = new List<GeomElement>();
             var warnings = new List<GeomWarning>();
-            int legacy = 0;
-            int ramps = new FilteredElementCollector(doc, setup.View.Id).OfCategory(BuiltInCategory.OST_Ramps).WhereElementIsNotElementType().GetElementCount();
 
             IEnumerable<Stairs> stairs = new FilteredElementCollector(doc, setup.View.Id)
                 .OfClass(typeof(Stairs))
@@ -37,7 +37,7 @@ namespace FloorplansRevitExtractor.ViewExport
             {
                 if (!Stairs.IsByComponent(doc, stair.Id))
                 {
-                    legacy++;
+                    AddFootprint(elements, StructureClass.Stair, stair, TopFootprint.Of(stair, setup));
                     return;
                 }
 
@@ -55,18 +55,22 @@ namespace FloorplansRevitExtractor.ViewExport
                 }
             });
 
-            var notes = new List<string>();
-            if (legacy > 0)
-            {
-                notes.Add($"{legacy} escada(s) por esboço (sem lances/patamares) ficaram fora da máscara.");
-            }
+            IEnumerable<Element> ramps = new FilteredElementCollector(doc, setup.View.Id)
+                .OfCategory(BuiltInCategory.OST_Ramps)
+                .WhereElementIsNotElementType()
+                .Where(r => Shown(r, setup.BottomZFeet, setup.CutPlaneZFeet))
+                .OrderBy(r => r.Id.Value);
+            ElementGuard.Each(ramps, warnings, ramp => AddFootprint(elements, StructureClass.Room, ramp, TopFootprint.Of(ramp, setup)));
 
-            if (ramps > 0)
-            {
-                notes.Add($"{ramps} rampa(s) visível(is) ainda não entra(m) na máscara (spec: rampa = 6 stair).");
-            }
+            return new StairReading(elements, warnings, new string[0]);
+        }
 
-            return new StairReading(elements, warnings, notes);
+        private static void AddFootprint(List<GeomElement> elements, StructureClass cls, Element element, List<IReadOnlyList<Point2D>> rings)
+        {
+            if (rings.Count > 0)
+            {
+                elements.Add(GeomElement.Filled(cls, element.Id.Value, rings));
+            }
         }
 
         private static bool Shown(Element component, double floorZ, double cutZ)

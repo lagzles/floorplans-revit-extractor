@@ -77,6 +77,10 @@ namespace FloorplansRevitExtractor.Core.Sample
             RgbImage image = PngDecoder.DecodeRgb(request.ImagePng);
             PixelTransform transform = request.Geom.Transform;
             SemanticMask semantic = GeomRasterizer.PaintSemantic(request.Geom);
+            SemanticMask structureOnly = GeomRasterizer.PaintSemantic(request.Geom with
+            {
+                Elements = request.Geom.Elements.Where(e => !StructureClassFolding.IsAnnotation((byte)e.Class)).ToList(),
+            });
             InstanceMask instance = PaintInstances(request.Rooms, transform);
             SampleLabel label = LabelAssembler.Build(new LabelInputs
             {
@@ -91,7 +95,7 @@ namespace FloorplansRevitExtractor.Core.Sample
                 InstanceMask = instance,
                 File = SampleFiles.FileName(id, SampleFiles.ImageExtension),
             });
-            GateResult gate = SampleGate.Check(image, semantic, instance, label, request.Geom, request.ReviewNotes, request.ExpectedCounts);
+            GateResult gate = SampleGate.Check(image, semantic, instance, label, request.Geom, request.ReviewNotes, request.ExpectedCounts, structureOnly);
             return new Built(image, semantic, instance, label, gate);
         }
 
@@ -130,14 +134,21 @@ namespace FloorplansRevitExtractor.Core.Sample
             {
                 RgbImage qa = QaOverlay.Compose(image, semantic);
                 File.WriteAllBytes(Staged(SampleFiles.Qa, ".png"), PngEncoder.EncodeRgb(qa.Width, qa.Height, qa.Pixels));
+                RgbImage annotation = QaOverlay.ComposeAnnotation(image, semantic);
+                File.WriteAllBytes(
+                    Staged(SampleFiles.Qa, SampleFiles.AnnotationQaSuffix),
+                    PngEncoder.EncodeRgb(annotation.Width, annotation.Height, annotation.Pixels));
+                RgbImage newClasses = QaOverlay.ComposeNewClasses(image, semantic);
+                File.WriteAllBytes(
+                    Staged(SampleFiles.Qa, SampleFiles.NewClassesQaSuffix),
+                    PngEncoder.EncodeRgb(newClasses.Width, newClasses.Height, newClasses.Pixels));
             }
         }
 
         private static string Promote(string staging, string outDir, string id)
         {
-            foreach (string folder in PromotionOrder)
+            foreach ((string folder, string extension) in InPromotionOrder())
             {
-                string extension = ExtensionOf(folder);
                 string from = SampleFiles.PathOf(staging, folder, id, extension);
                 string to = SampleFiles.PathOf(outDir, folder, id, extension);
                 if (File.Exists(from))
@@ -161,9 +172,9 @@ namespace FloorplansRevitExtractor.Core.Sample
         /// </summary>
         private static string Reject(string staging, string outDir, string id)
         {
-            foreach (string folder in PromotionOrder.Reverse())
+            foreach ((string folder, string extension) in InPromotionOrder().Reverse())
             {
-                string path = SampleFiles.PathOf(outDir, folder, id, ExtensionOf(folder));
+                string path = SampleFiles.PathOf(outDir, folder, id, extension);
                 if (File.Exists(path))
                 {
                     File.Delete(path);
@@ -259,7 +270,9 @@ namespace FloorplansRevitExtractor.Core.Sample
             }
         }
 
-        private static string ExtensionOf(string folder) => SampleFiles.PerSample.First(f => f.Folder == folder).Extension;
+        /// <summary>Every per-sample file, ordered by its folder's promotion order (the label last).</summary>
+        private static IEnumerable<(string Folder, string Extension)> InPromotionOrder() =>
+            SampleFiles.PerSample.OrderBy(f => Array.IndexOf(PromotionOrder, f.Folder));
 
         private static void ClearStaging(string outDir) => DeleteDirectory(Path.Combine(outDir, SampleFiles.Staging));
 

@@ -7,6 +7,7 @@ using FloorplansRevitExtractor.Core.Png;
 using FloorplansRevitExtractor.Core.Raster;
 using FloorplansRevitExtractor.Core.Sample;
 using FloorplansRevitExtractor.Core.Tests.Label;
+using FloorplansRevitExtractor.Core.Tests.Raster;
 using FluentAssertions;
 using Xunit;
 using static FloorplansRevitExtractor.Core.Tests.Sample.SampleTestData;
@@ -142,6 +143,25 @@ namespace FloorplansRevitExtractor.Core.Tests.Sample
             });
 
             gate.Review.Should().ContainSingle(f => f.Check == "contagem").Which.Message.Should().Contain("3").And.Contain("0");
+        }
+
+        [Fact]
+        public void AnnotationOverConstruction_CountsAnnotationPixelsWhereStructureWasPainted()
+        {
+            // Spec v3: zero by construction; anything else means the paint order is wrong.
+            var structure = SemanticMaskPainter.Paint(10, 1, new[]
+            {
+                MaskElement.Filled(StructureClass.Wall, new[] { RasterTestShapes.Rect(0, 0, 3, 1) }),
+                MaskElement.Filled(StructureClass.Room, new[] { RasterTestShapes.Rect(3, 0, 10, 1) }),
+            });
+            var wrong = SemanticMaskPainter.Paint(10, 1, new[]
+            {
+                MaskElement.Filled(StructureClass.Room, new[] { RasterTestShapes.Rect(3, 0, 10, 1) }),
+                MaskElement.Filled(StructureClass.Grid, new[] { RasterTestShapes.Rect(0, 0, 5, 1) }),
+            });
+
+            SampleGate.AnnotationOverConstruction(wrong, structure).Should().Be(3);
+            SampleGate.AnnotationOverConstruction(structure, structure).Should().Be(0);
         }
 
         [Fact]

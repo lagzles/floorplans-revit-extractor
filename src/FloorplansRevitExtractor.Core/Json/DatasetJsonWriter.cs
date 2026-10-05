@@ -74,6 +74,13 @@ namespace FloorplansRevitExtractor.Core.Json
             JsonFields.WriteFloat(writer, "opening_fraction", gate.Metrics.OpeningFraction);
             WriteNullableFloat(writer, "wall_ink", gate.Metrics.WallInk);
             WriteNullableFloat(writer, "room_ink", gate.Metrics.RoomInk);
+            writer.WriteStartObject("class_pixels");
+            for (int cls = 0; cls < gate.Metrics.ClassPixels.Count; cls++)
+            {
+                writer.WriteNumber(StructureClassNames.ToName((StructureClass)cls), gate.Metrics.ClassPixels[cls]);
+            }
+
+            writer.WriteEndObject();
             writer.WriteEndObject();
             writer.WriteStartObject("source");
             JsonFields.WriteSourceFields(writer, source);

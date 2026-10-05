@@ -31,6 +31,16 @@ namespace FloorplansRevitExtractor.Core.Sample
         /// <summary>Spec v2 count check: blobs within 5% of the elements extracted.</summary>
         private const double CountTolerance = 0.05;
 
+        /// <summary>Spec v4: at least this share of text boxes must hold ink (the letters).</summary>
+        public const double MinTextBoxesWithInk = 0.9;
+
+        /// <summary>Spec v4 count check: an opening and its refinement count together.</summary>
+        private static readonly IReadOnlyDictionary<StructureClass, StructureClass[]> CountedTogether = new Dictionary<StructureClass, StructureClass[]>
+        {
+            [StructureClass.Door] = new[] { StructureClass.Door, StructureClass.Passage },
+            [StructureClass.Window] = new[] { StructureClass.Window, StructureClass.CurtainWall },
+        };
+
         // Spec v2, whole sheet: outside these the sample goes to review, not out.
         private const double MinWallFraction = 0.008;
         private const double MaxWallFraction = 0.12;
@@ -44,7 +54,8 @@ namespace FloorplansRevitExtractor.Core.Sample
             SampleLabel label,
             GeomDocument geom,
             IReadOnlyList<string> notes,
-            IReadOnlyDictionary<StructureClass, int>? expectedCounts = null)
+            IReadOnlyDictionary<StructureClass, int>? expectedCounts = null,
+            SemanticMask? structureOnly = null)
         {
             var rejections = new List<GateFinding>();
             var review = new List<GateFinding>();
@@ -57,15 +68,22 @@ namespace FloorplansRevitExtractor.Core.Sample
             CheckInstanceIds(instance, label, rejections);
             Ink ink = MeasureInk(image, semantic);
             int total = semantic.Width * semantic.Height;
-            int wall = semantic.CountPixels(StructureClass.Wall);
-            int openings = semantic.CountPixels(StructureClass.Door) + semantic.CountPixels(StructureClass.Window);
-            var metrics = new GateMetrics((double)wall / total, (double)openings / total, ink.Wall, ink.Room);
+            int wall = semantic.CountPixels(StructureClass.Wall) + semantic.CountPixels(StructureClass.LowWall);
+            int openings = new[] { StructureClass.Door, StructureClass.Window, StructureClass.Passage, StructureClass.CurtainWall }
+                .Sum(semantic.CountPixels);
+            var metrics = new GateMetrics((double)wall / total, (double)openings / total, ink.Wall, ink.Room)
+            {
+                ClassPixels = Enum.GetValues(typeof(StructureClass)).Cast<StructureClass>().Select(semantic.CountPixels).ToArray(),
+            };
 
-            if (wall == 0)
+            if (semantic.CountPixels(StructureClass.Wall) == 0)
             {
                 rejections.Add(new GateFinding("estrutura", "A máscara não tem nenhum pixel de parede (classe 2)."));
             }
 
+            CheckValues(semantic, rejections);
+            CheckAnnotation(semantic, structureOnly, rejections);
+            CheckTextInk(image, geom, review);
             CheckAreas(label, rejections);
             CheckRoundtrip(label, rejections);
             CheckInk(ink, rejections, review);
@@ -107,6 +125,87 @@ namespace FloorplansRevitExtractor.Core.Sample
                     "classes",
                     $"Instâncias na máscara ({string.Join(",", present.OrderBy(i => i))}) não batem com instances_px ({string.Join(",", expected.OrderBy(i => i))})."));
             }
+        }
+
+        /// <summary>
+        /// Annotation pixels (10, 11, 13) where the construction alone paints
+        /// something other than background or room: zero by construction of the
+        /// paint order; anything else means the order is wrong and the 10-class
+        /// fold would not be exact.
+        /// </summary>
+        public static int AnnotationOverConstruction(SemanticMask full, SemanticMask structureOnly)
+        {
+            byte[] withAnnotation = full.Pixels;
+            byte[] construction = structureOnly.Pixels;
+            int count = 0;
+            for (int i = 0; i < withAnnotation.Length; i++)
+            {
+                bool annotation = StructureClassFolding.IsAnnotation(withAnnotation[i]);
+                bool built = construction[i] != (byte)StructureClass.Background && construction[i] != (byte)StructureClass.Room;
+                count += annotation && built ? 1 : 0;
+            }
+
+            return count;
+        }
+
+        private static void CheckAnnotation(SemanticMask semantic, SemanticMask? structureOnly, List<GateFinding> rejections)
+        {
+            int over = structureOnly == null ? 0 : AnnotationOverConstruction(semantic, structureOnly);
+            if (over > 0)
+            {
+                rejections.Add(new GateFinding("anotacao", $"{over} pixel(s) de eixo/cota/texto sobre construção: ordem de pintura errada."));
+            }
+        }
+
+        /// <summary>
+        /// Spec v4 "dobra exata": only ids 0-16 and 255, so to_legacy_structure
+        /// lands in 0-11; together with the annotation check above,
+        /// strip_annotation lands in 0-9.
+        /// </summary>
+        private static void CheckValues(SemanticMask semantic, List<GateFinding> rejections)
+        {
+            int classCount = StructureClassPalette.Colors.Count;
+            int outside = semantic.Pixels.Count(p => p >= classCount && p != SemanticMask.IgnoreIndex);
+            if (outside > 0)
+            {
+                rejections.Add(new GateFinding("dobra", $"{outside} pixel(s) com id fora de 0 a {classCount - 1}: a dobra para 12 e 10 classes não fecha."));
+            }
+        }
+
+        /// <summary>Spec v4: at least 90% of text boxes have dark pixels (the letters) inside.</summary>
+        private static void CheckTextInk(RgbImage image, GeomDocument geom, List<GateFinding> review)
+        {
+            GeomDocument textOnly = geom with { Elements = geom.Elements.Where(e => e.Class == StructureClass.Text).ToList() };
+            IReadOnlyList<MaskElement> boxes = GeomRasterizer.ToMaskElements(textOnly);
+            if (boxes.Count == 0 || image.Width != geom.Transform.Width || image.Height != geom.Transform.Height)
+            {
+                return;
+            }
+
+            int withInk = boxes.Count(box => HasInk(image, box));
+            if ((double)withInk / boxes.Count < MinTextBoxesWithInk)
+            {
+                review.Add(new GateFinding(
+                    "texto",
+                    $"Só {withInk} de {boxes.Count} caixa(s) de texto têm tinta dentro (mínimo {MinTextBoxesWithInk:P0}): caixa deslocada da letra."));
+            }
+        }
+
+        private static bool HasInk(RgbImage image, MaskElement box)
+        {
+            bool found = false;
+            foreach (PolygonShape polygon in box.Polygons)
+            {
+                ScanlineFiller.FillSpans(image.Width, image.Height, polygon, (row, first, last) =>
+                {
+                    for (int x = first; x <= last && !found; x++)
+                    {
+                        found = image.GrayAt((row * image.Width) + x) < InkThreshold;
+                    }
+                });
+            }
+
+            return found;
         }
 
         private static void CheckAreas(SampleLabel label, List<GateFinding> rejections)
@@ -190,7 +289,7 @@ namespace FloorplansRevitExtractor.Core.Sample
             {
                 review.Add(new GateFinding(
                     "distribuicao",
-                    $"Porta + janela ocupam {metrics.OpeningFraction:P2} da imagem (faixa: {MinOpeningFraction:P1} a {MaxOpeningFraction:P0})."));
+                    $"Vãos (porta, janela, passagem, pele de vidro) ocupam {metrics.OpeningFraction:P2} da imagem (faixa: {MinOpeningFraction:P1} a {MaxOpeningFraction:P0})."));
             }
         }
 
@@ -207,7 +306,7 @@ namespace FloorplansRevitExtractor.Core.Sample
 
             foreach (KeyValuePair<StructureClass, int> entry in expected.OrderBy(e => e.Key))
             {
-                int blobs = BlobCounter.Count(semantic, entry.Key);
+                int blobs = BlobCounter.Count(semantic, CountedTogether.TryGetValue(entry.Key, out StructureClass[] group) ? group : new[] { entry.Key });
                 int allowed = (int)Math.Floor(entry.Value * CountTolerance);
                 if (Math.Abs(blobs - entry.Value) > allowed)
                 {

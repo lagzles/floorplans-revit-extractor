@@ -12,7 +12,7 @@ namespace FloorplansRevitExtractor.Core.Tests.Raster
         [Fact]
         public void Colors_MatchTheTrainingDatasetClassesJson()
         {
-            // Copied from struct7k_v4/classes.json; the spec forbids redefining colors.
+            // Copied from struct7k_v4/classes.json, plus spec v3 and v4 (STRUCTURE_CLASSES); the spec forbids redefining colors.
             StructureClassPalette.Colors.Should().Equal(
                 new Rgb(0, 0, 0),
                 new Rgb(120, 200, 120),
@@ -23,7 +23,14 @@ namespace FloorplansRevitExtractor.Core.Tests.Raster
                 new Rgb(0, 160, 160),
                 new Rgb(200, 120, 60),
                 new Rgb(235, 110, 175),
-                new Rgb(120, 120, 175));
+                new Rgb(120, 120, 175),
+                new Rgb(250, 250, 250), // grid (spec v3)
+                new Rgb(255, 140, 0), // dimension (spec v3)
+                new Rgb(150, 225, 255), // passage (spec v4)
+                new Rgb(128, 128, 0), // text
+                new Rgb(150, 0, 40), // low_wall
+                new Rgb(40, 230, 200), // curtain_wall
+                new Rgb(110, 50, 20)); // fixture
         }
 
         [Fact]
