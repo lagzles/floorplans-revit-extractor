@@ -62,7 +62,8 @@ namespace FloorplansRevitExtractor.RevitInterop
                 Holes = holes,
                 AxisRects = RectilinearDecomposer.TryDecompose(centerLoop),
                 Area = area,
-                Centroid = PolygonGeometry.Centroid(outer),
+                // The gate projects it and compares with the pixels' mean, which leaves the holes out.
+                Centroid = PolygonGeometry.NetCentroid(outer, holes),
                 BBoxM = PolygonGeometry.BBox(outer),
                 RevitAreaM2 = revitAreaM2,
             };

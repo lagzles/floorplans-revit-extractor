@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using FloorplansRevitExtractor.Core.Geometry;
 using FluentAssertions;
@@ -129,6 +130,28 @@ namespace FloorplansRevitExtractor.Core.Tests.Geometry
             minY.Should().Be(0);
             maxX.Should().Be(5);
             maxY.Should().Be(4);
+        }
+
+        [Fact]
+        public void NetCentroid_MovesAwayFromAHole()
+        {
+            // 10 x 10 square with a 2 x 2 pillar hole in its left half.
+            Point2D[] outer = { new Point2D(0, 0), new Point2D(10, 0), new Point2D(10, 10), new Point2D(0, 10) };
+            Point2D[] hole = { new Point2D(2, 4), new Point2D(4, 4), new Point2D(4, 6), new Point2D(2, 6) };
+
+            Point2D c = PolygonGeometry.NetCentroid(outer, new[] { (IReadOnlyList<Point2D>)hole });
+
+            // (100 * 5 - 4 * 3) / 96 on X; Y stays 5 by symmetry.
+            c.X.Should().BeApproximately(488.0 / 96.0, 1e-12);
+            c.Y.Should().BeApproximately(5.0, 1e-12);
+        }
+
+        [Fact]
+        public void NetCentroid_WithoutHoles_IsTheCentroid()
+        {
+            Point2D[] outer = { new Point2D(0, 0), new Point2D(4, 0), new Point2D(4, 2), new Point2D(0, 2) };
+
+            PolygonGeometry.NetCentroid(outer, Array.Empty<IReadOnlyList<Point2D>>()).Should().Be(PolygonGeometry.Centroid(outer));
         }
     }
 }

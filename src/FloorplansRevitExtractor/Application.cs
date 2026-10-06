@@ -36,6 +36,12 @@ namespace FloorplansRevitExtractor
                 assemblyPath,
                 typeof(ExportViewCommand).FullName));
 
+            extractionPanel.AddItem(new PushButtonData(
+                "ExportViews",
+                "Exportar\nvárias vistas",
+                assemblyPath,
+                typeof(ExportViewsCommand).FullName));
+
             return Result.Succeeded;
         }
 

@@ -107,6 +107,23 @@ cota e texto) e `_novas` (passagem, mureta, pele de vidro e louça).
 - Toda exportação deixa em `debug/` o PNG cru do Revit e as medidas usadas
   para alinhar (`view_<id>_export.png`, `view_<id>_medidas.txt`).
 
+### Exportar várias vistas (lote no modelo aberto)
+
+Botão **"Extração" → "Exportar várias vistas"**: exporta muitas plantas sem
+abrir uma a uma.
+
+- A tela lista as plantas do modelo agrupadas como no navegador de projeto
+  (plantas de piso, estruturais, de área e de forro), com checkbox no grupo e
+  em cada vista. As que estão em folhas vêm marcadas. As que não podem virar
+  amostra (sem recorte, recorte não retangular, planta de forro) aparecem em
+  cinza com o motivo.
+- Resoluções da spec v4 §6: ralo 22, típico 48 e denso 100 px/m, uma ou mais.
+  A mesma vista em outra resolução é outra amostra (chave `view_id@px`; a de
+  48 px/m mantém a chave e o id antigos).
+- Uma vista que falha não para o lote. Dá para cancelar entre uma vista e
+  outra. No fim aparece um resumo, e `lotes/lote_AAAAMMDD_HHMMSS.json` traz o
+  resultado e o tempo de cada vista e resolução.
+
 ## Build
 
 Alvo: Revit 2024 (.NET Framework 4.8). Não é necessário ter o Revit

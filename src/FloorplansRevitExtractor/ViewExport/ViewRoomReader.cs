@@ -27,7 +27,8 @@ namespace FloorplansRevitExtractor.ViewExport
     /// category while still being the rooms' floor plan. A double-height room
     /// of the floor below also reaches the cut plane and lies under this
     /// floor's rooms: where rooms overlap, the one based highest (closest
-    /// below the cut) is this plan's room, and the other is left out.
+    /// below the cut) is this plan's room, and the other is left out. Where
+    /// nothing of this floor covers it, it is open to below: a void (9).
     /// </summary>
     internal static class ViewRoomReader
     {
@@ -46,6 +47,8 @@ namespace FloorplansRevitExtractor.ViewExport
             int outside = 0;
             int stacked = 0;
             int patios = 0;
+            int doubleHeight = 0;
+            int risingThrough = 0;
             var candidates = new List<(Room Room, RoomPreviewRecord Record, double BaseZ)>();
 
             IEnumerable<Room> rooms = new FilteredElementCollector(doc)
@@ -95,6 +98,20 @@ namespace FloorplansRevitExtractor.ViewExport
             // Ids follow the Revit element ids, so they do not depend on the overlap pass.
             foreach ((Room room, RoomPreviewRecord candidate) in kept.OrderBy(k => k.Room.Id.Value))
             {
+                if (FromFloorBelow(room, setup))
+                {
+                    // Spec v4: the upper half of a double-height room is a void of this plan
+                    // (vazio de pé-direito), not one of its rooms. A stair or shaft room rising
+                    // through every floor keeps its own class: painted as void, it would cover
+                    // the stair (the void layer comes after the stair layer).
+                    StructureClass below = MaskClass(candidate);
+                    bool keepsClass = below == StructureClass.Stair || below == StructureClass.Void;
+                    elements.Add(GeomElement.Filled(keepsClass ? below : StructureClass.Void, room.Id.Value, new[] { candidate.Polygon }, candidate.Holes));
+                    doubleHeight += keepsClass ? 0 : 1;
+                    risingThrough += keepsClass ? 1 : 0;
+                    continue;
+                }
+
                 RoomPreviewRecord record = candidate with { Id = records.Count };
                 idByRoom[room.Id.Value] = record.Id;
                 records.Add(record);
@@ -113,6 +130,16 @@ namespace FloorplansRevitExtractor.ViewExport
                 notes.Add($"{patios} pátio(s) descoberto(s) no label e fora da máscara (fica fundo, como no gerador).");
             }
 
+            if (doubleHeight > 0)
+            {
+                notes.Add($"{doubleHeight} ambiente(s) de pé-direito duplo do pavimento inferior pintado(s) como vazio (9), fora do label.");
+            }
+
+            if (risingThrough > 0)
+            {
+                notes.Add($"{risingThrough} escada(s)/poço(s) de pavimento inferior que atravessa(m) o corte: classe própria na máscara, fora do label.");
+            }
+
             if (stacked > 0)
             {
                 notes.Add($"{stacked} ambiente(s) de pavimento inferior (pé-direito duplo) sob ambientes deste pavimento ficaram fora.");
@@ -129,6 +156,13 @@ namespace FloorplansRevitExtractor.ViewExport
             }
 
             return new RoomReading(records, elements, idByRoom, notes);
+        }
+
+        /// <summary>A room whose level is below the view's: it reaches this cut plane only by its double height.</summary>
+        private static bool FromFloorBelow(Room room, ViewSetup setup)
+        {
+            const double ToleranceFeet = 0.01;
+            return room.Level != null && room.Level.ProjectElevation < setup.Level.ProjectElevation - ToleranceFeet;
         }
 
         /// <summary>Spec v4: a room named as a ramp is floor even when its type says stairs.</summary>

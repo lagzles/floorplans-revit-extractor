@@ -85,7 +85,7 @@ namespace FloorplansRevitExtractor.ViewExport
 
             var request = new SampleRequest
             {
-                Key = new SampleKey(docGuid, Mode, view.Id.Value.ToString(CultureInfo.InvariantCulture)),
+                Key = new SampleKey(docGuid, Mode, SampleResolution.ViewVariant(view.Id.Value, targetPxPerM)),
                 ImagePng = image.Png,
                 Geom = geom,
                 Source = new SourceFragment

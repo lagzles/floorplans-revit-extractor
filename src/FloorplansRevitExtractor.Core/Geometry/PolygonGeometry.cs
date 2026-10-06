@@ -37,6 +37,34 @@ namespace FloorplansRevitExtractor.Core.Geometry
             return area;
         }
 
+        /// <summary>
+        /// Centroid of the area that is left once the holes are taken out: what
+        /// the room's pixels average to, since a pillar or shaft hole is not
+        /// painted as the room. Equal to <see cref="Centroid"/> with no holes.
+        /// </summary>
+        public static Point2D NetCentroid(IReadOnlyList<Point2D> outer, IReadOnlyList<IReadOnlyList<Point2D>> holes)
+        {
+            double netArea = NetArea(outer, holes);
+            if (holes.Count == 0 || !(netArea > 0))
+            {
+                return Centroid(outer);
+            }
+
+            double outerArea = Area(outer);
+            Point2D c = Centroid(outer);
+            double x = c.X * outerArea;
+            double y = c.Y * outerArea;
+            foreach (IReadOnlyList<Point2D> hole in holes)
+            {
+                double holeArea = Area(hole);
+                Point2D h = Centroid(hole);
+                x -= h.X * holeArea;
+                y -= h.Y * holeArea;
+            }
+
+            return new Point2D(x / netArea, y / netArea);
+        }
+
         public static Point2D Centroid(IReadOnlyList<Point2D> ring)
         {
             double signedArea = SignedArea(ring);

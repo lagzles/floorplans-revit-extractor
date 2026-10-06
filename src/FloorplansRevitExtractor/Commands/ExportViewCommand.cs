@@ -17,9 +17,6 @@ namespace FloorplansRevitExtractor.Commands
     [Transaction(TransactionMode.Manual)]
     public class ExportViewCommand : IExternalCommand
     {
-        /// <summary>Spec v2, evaluation "typical" band: 40 to 55 px/m.</summary>
-        private const double TargetPxPerM = 48.0;
-
         private const int MaxFindingsShown = 8;
 
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
@@ -32,18 +29,14 @@ namespace FloorplansRevitExtractor.Commands
             }
 
             Document doc = uiDoc.Document;
-            // Not under Documents: it is often redirected to OneDrive, whose sync locks files mid-write.
-            string outDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "floorplans-dataset");
+            string outDir = SampleRun.OutputFolder;
             try
             {
-                ViewSetup setup = ViewSetup.Read(uiDoc.ActiveView);
-                (SampleRequest request, string diagnostics) = ViewSampleBuilder.Build(
+                (ExportResult result, string diagnostics) = SampleRun.Export(
                     doc,
-                    setup,
-                    TargetPxPerM,
-                    commandData.Application.Application.VersionNumber,
-                    Path.Combine(outDir, "debug"));
-                ExportResult result = SampleExporter.Export(outDir, request);
+                    ViewSetup.Read(uiDoc.ActiveView),
+                    SampleResolution.DefaultPxPerM,
+                    commandData.Application.Application.VersionNumber);
                 ShowResult(result, diagnostics, outDir);
                 return Result.Succeeded;
             }

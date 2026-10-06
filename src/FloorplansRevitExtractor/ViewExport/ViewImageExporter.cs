@@ -5,6 +5,7 @@ using System.Linq;
 using Autodesk.Revit.DB;
 using FloorplansRevitExtractor.Core.Geometry;
 using FloorplansRevitExtractor.Core.Png;
+using FloorplansRevitExtractor.Core.Sample;
 
 namespace FloorplansRevitExtractor.ViewExport
 {
@@ -49,7 +50,7 @@ namespace FloorplansRevitExtractor.ViewExport
             {
                 byte[] png = ExportWithCropVisible(doc, setup.View, folder, widthPx);
                 RgbImage image = PngDecoder.DecodeRgb(png);
-                string debugName = "view_" + setup.View.Id.Value;
+                string debugName = "view_" + SampleResolution.ViewVariant(setup.View.Id.Value, targetPxPerM).Replace('@', '_');
                 try
                 {
                     (PixelTransform transform, ViewRegion region, string diagnostics) = Measure(setup.ImageRegions, image, targetPxPerM);

@@ -143,11 +143,19 @@ namespace FloorplansRevitExtractor.ViewExport
             }
         }
 
-        internal static ViewSetup Read(View activeView)
+        /// <summary>Plan kinds that look down at a cut plane, as a floor plan does.</summary>
+        private static readonly ViewType[] DownwardPlans = { ViewType.FloorPlan, ViewType.EngineeringPlan, ViewType.AreaPlan };
+
+        internal static ViewSetup Read(View candidate)
         {
-            if (!(activeView is ViewPlan view) || view.ViewType != ViewType.FloorPlan || view.IsTemplate)
+            if (candidate is ViewPlan ceiling && ceiling.ViewType == ViewType.CeilingPlan)
             {
-                throw new ViewNotExportableException("Abra uma planta baixa (Floor Plan) como vista ativa.");
+                throw new ViewNotExportableException("Planta de forro: olha para cima do plano de corte, não é planta baixa.");
+            }
+
+            if (!(candidate is ViewPlan view) || !DownwardPlans.Contains(view.ViewType) || view.IsTemplate)
+            {
+                throw new ViewNotExportableException("A vista precisa ser uma planta baixa (piso, estrutural ou de área).");
             }
 
             if (!view.CropBoxActive)
