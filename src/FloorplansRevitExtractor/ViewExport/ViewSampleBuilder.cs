@@ -34,12 +34,16 @@ namespace FloorplansRevitExtractor.ViewExport
             string debugFolder)
         {
             ExportedImage image = ViewImageExporter.Export(doc, setup, targetPxPerM, debugFolder);
+            RgbImage rgb = PngDecoder.DecodeRgb(image.Png);
             RoomReading rooms = ViewRoomReader.Read(doc, setup, setup.ModelRegion);
-            var ink = new InkBoxes(PngDecoder.DecodeRgb(image.Png), image.Transform);
             WallReading walls = WallSectionReader.Read(doc, setup, image.Transform.PxPerM);
-            OpeningReading openings = OpeningReader.Read(doc, setup, rooms.RecordIdByRoom, image.Transform.PxPerM);
-            RailingReading railings = RailingReader.Read(doc, setup);
             PillarReading pillars = PillarReader.Read(doc, setup);
+            (PixelTransform transform, string registration) = image.Search == null
+                ? (image.Transform, null)
+                : Register(setup, image, rgb, walls.Elements.Concat(pillars.Elements).ToList());
+            var ink = new InkBoxes(rgb, transform);
+            OpeningReading openings = OpeningReader.Read(doc, setup, rooms.RecordIdByRoom, transform.PxPerM);
+            RailingReading railings = RailingReader.Read(doc, setup);
             StairReading stairs = StairReader.Read(doc, setup);
             VoidReading voids = VoidReader.Read(doc, setup);
             FloorReading floors = FloorReader.Read(doc, setup, rooms.Records.Where(r => r.Type == "patio").Select(r => r.Polygon).ToList());
@@ -67,7 +71,7 @@ namespace FloorplansRevitExtractor.ViewExport
             var geom = new GeomDocument
             {
                 View = new GeomView(view.Id.Value, view.Name, view.Scale, setup.CutPlaneM),
-                Transform = image.Transform,
+                Transform = transform,
                 Elements = elements,
                 Warnings = walls.Warnings
                     .Concat(openings.Warnings)
@@ -103,7 +107,7 @@ namespace FloorplansRevitExtractor.ViewExport
                     ExportedAt = DateTimeOffset.Now.ToString("o", CultureInfo.InvariantCulture),
                     PluginVersion = PluginVersion,
                     PxPerMTarget = targetPxPerM,
-                    Alignment = "direto",
+                    Alignment = registration == null ? "direto" : "registrado",
                 },
                 Building = new BuildingMeasures
                 {
@@ -134,13 +138,54 @@ namespace FloorplansRevitExtractor.ViewExport
                     .Concat(texts.Notes)
                     .Concat(GridLookalikeNotes(doc, view))
                     .Concat(LinkNotes(doc, view))
+                    .Concat(registration == null ? Enumerable.Empty<string>() : new[] { registration })
                     .Concat(setup.ShiftedLevelNames.Count == 0
                         ? Enumerable.Empty<string>()
                         : new[] { "Blocos em níveis próprios cortados à mesma altura acima do seu nível: " + string.Join(", ", setup.ShiftedLevelNames) + "." })
                     .ToList(),
             };
 
-            return (request, image.Diagnostics);
+            return (request, image.Diagnostics + (registration == null ? string.Empty : Environment.NewLine + registration));
+        }
+
+        /// <summary>
+        /// Spec v4 section 7, automatic registration: the image's scale is known
+        /// (from the view's outline) but not where the crop sits in it. The cut
+        /// walls and pillars are slid over the possible shifts, and the shift is
+        /// taken only when one clearly wins. Otherwise the view is skipped, as
+        /// before: never a mask that may be misaligned.
+        /// </summary>
+        private static (PixelTransform Transform, string Note) Register(ViewSetup setup, ExportedImage image, RgbImage rgb, IReadOnlyList<GeomElement> construction)
+        {
+            PixelTransform provisional = image.Transform;
+            ((int, int) dxRange, (int, int) dyRange) = image.Search.Value;
+            double k = provisional.PxPerM;
+            var draft = new GeomDocument
+            {
+                View = new GeomView(setup.View.Id.Value, setup.View.Name, setup.View.Scale, setup.CutPlaneM),
+                Transform = new PixelTransform(
+                    provisional.X0,
+                    provisional.Y1,
+                    k,
+                    (int)Math.Ceiling(image.Region.Width * k),
+                    (int)Math.Ceiling(image.Region.Height * k)),
+                Elements = construction,
+                Warnings = Array.Empty<GeomWarning>(),
+            };
+            SemanticMask mask = GeomRasterizer.PaintSemantic(draft);
+            RegistrationFit fit = ImageRegistration.Find(rgb, mask, new[] { StructureClass.Wall, StructureClass.Pillar }, dxRange, dyRange);
+            if (fit == null || !fit.IsConfident)
+            {
+                string scores = fit == null
+                    ? "sem paredes nem pilares para registrar"
+                    : $"melhor ({fit.Dx}, {fit.Dy}) px com {fit.Score:P0} das bordas sobre traço, segundo melhor {fit.RunnerUpScore:P0}";
+                throw new ViewNotExportableException(
+                    "A imagem é maior que o recorte (anotação fora dele) e o registro não achou um encaixe seguro "
+                    + $"({scores}). Nenhuma amostra foi gravada." + Environment.NewLine + image.Diagnostics);
+            }
+
+            var registered = new PixelTransform(provisional.X0 - (fit.Dx / k), provisional.Y1 + (fit.Dy / k), k, provisional.Width, provisional.Height);
+            return (registered, $"Imagem registrada: recorte em ({fit.Dx}, {fit.Dy}) px a {k:F2} px/m; {fit.Score:P0} das bordas de parede/pilar sobre traço (segundo melhor encaixe {fit.RunnerUpScore:P0}).");
         }
 
         /// <summary>

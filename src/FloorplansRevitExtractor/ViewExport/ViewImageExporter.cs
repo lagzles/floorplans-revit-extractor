@@ -6,11 +6,23 @@ using Autodesk.Revit.DB;
 using FloorplansRevitExtractor.Core.Geometry;
 using FloorplansRevitExtractor.Core.Png;
 using FloorplansRevitExtractor.Core.Sample;
+using FloorplansRevitExtractor.RevitInterop;
 
 namespace FloorplansRevitExtractor.ViewExport
 {
     /// <summary>The exported PNG and the transform measured on it.</summary>
-    internal sealed record ExportedImage(byte[] Png, PixelTransform Transform, ViewRegion Region, string Diagnostics);
+    /// <param name="Search">
+    /// Set when only the scale is known (from the view's outline): the
+    /// transform places the model crop at the image's top left, and the
+    /// columns and rows it may be off by are given, for the registration
+    /// against the construction (ViewSampleBuilder).
+    /// </param>
+    internal sealed record ExportedImage(
+        byte[] Png,
+        PixelTransform Transform,
+        ViewRegion Region,
+        string Diagnostics,
+        ((int Min, int Max) Dx, (int Min, int Max) Dy)? Search = null);
 
     /// <summary>
     /// Exports the view as Revit draws it (office graphics, annotations
@@ -48,14 +60,14 @@ namespace FloorplansRevitExtractor.ViewExport
             Directory.CreateDirectory(folder);
             try
             {
-                byte[] png = ExportWithCropVisible(doc, setup.View, folder, widthPx);
+                (byte[] png, (double W, double H)? outlineM) = ExportWithCropVisible(doc, setup.View, folder, widthPx);
                 RgbImage image = PngDecoder.DecodeRgb(png);
                 string debugName = "view_" + SampleResolution.ViewVariant(setup.View.Id.Value, targetPxPerM).Replace('@', '_');
                 try
                 {
-                    (PixelTransform transform, ViewRegion region, string diagnostics) = Measure(setup.ImageRegions, image, targetPxPerM);
-                    SaveDebug(debugFolder, debugName, png, diagnostics);
-                    return new ExportedImage(png, transform, region, diagnostics);
+                    ExportedImage measured = Measure(setup.ImageRegions, outlineM, image, targetPxPerM, png);
+                    SaveDebug(debugFolder, debugName, png, measured.Diagnostics);
+                    return measured;
                 }
                 catch (ViewNotExportableException ex)
                 {
@@ -77,11 +89,11 @@ namespace FloorplansRevitExtractor.ViewExport
         /// back after the export (spec v1 section 9): the model ends exactly as
         /// it was, and Revit has nothing to save.
         /// </summary>
-        private static byte[] ExportWithCropVisible(Document doc, View view, string folder, int widthPx)
+        private static (byte[] Png, (double W, double H)? OutlineM) ExportWithCropVisible(Document doc, View view, string folder, int widthPx)
         {
             if (view.CropBoxVisible)
             {
-                return ExportPng(doc, view, folder, widthPx);
+                return (ExportPng(doc, view, folder, widthPx), OutlineMeters(view));
             }
 
             using var group = new TransactionGroup(doc, "Floorplans Extractor: exportar vista");
@@ -95,12 +107,31 @@ namespace FloorplansRevitExtractor.ViewExport
                     transaction.Commit();
                 }
 
-                return ExportPng(doc, view, folder, widthPx);
+                // Read with the boundary shown, as the export draws it.
+                return (ExportPng(doc, view, folder, widthPx), OutlineMeters(view));
             }
             finally
             {
                 group.RollBack();
             }
+        }
+
+        /// <summary>
+        /// The view's extents on paper (View.Outline), annotation included, in
+        /// model meters: what the export fits its width to. Its size gives the
+        /// scale of the image; where the crop sits in it is left to registration.
+        /// </summary>
+        private static (double W, double H)? OutlineMeters(View view)
+        {
+            BoundingBoxUV outline = view.Outline;
+            if (outline == null)
+            {
+                return null;
+            }
+
+            double w = UnitsConverter.ToMeters((outline.Max.U - outline.Min.U) * view.Scale);
+            double h = UnitsConverter.ToMeters((outline.Max.V - outline.Min.V) * view.Scale);
+            return w > 0 && h > 0 ? (w, h) : ((double, double)?)null;
         }
 
         /// <summary>The raw export and the measurements, kept next to the batch: what M0 needs to see.</summary>
@@ -151,7 +182,15 @@ namespace FloorplansRevitExtractor.ViewExport
             return File.ReadAllBytes(files[0]);
         }
 
-        private static (PixelTransform, ViewRegion, string) Measure(IReadOnlyList<ViewRegion> regions, RgbImage image, double targetPxPerM)
+        /// <summary>Pixels searched past the size difference, for rounding.</summary>
+        private const int SearchMarginPx = 2;
+
+        private static ExportedImage Measure(
+            IReadOnlyList<ViewRegion> regions,
+            (double W, double H)? outlineM,
+            RgbImage image,
+            double targetPxPerM,
+            byte[] png)
         {
             var lines = new List<string> { $"PNG exportado: {image.Width} x {image.Height} px; alvo {targetPxPerM} px/m." };
             foreach (ViewRegion region in regions)
@@ -166,11 +205,36 @@ namespace FloorplansRevitExtractor.ViewExport
                 {
                     PixelTransform t = PixelTransform.Measure(region.MinX, region.MinY, region.MaxX, region.MaxY, image.Width, image.Height);
                     lines.Add($"Usado: {region.Name}.");
-                    return (t, region, string.Join(Environment.NewLine, lines));
+                    return new ExportedImage(png, t, region, string.Join(Environment.NewLine, lines));
                 }
                 catch (ArgumentException)
                 {
                     // Not this region; try the next candidate.
+                }
+            }
+
+            // Annotation outside the crop makes the export larger than any crop, on sides that
+            // depend on the drawing. The view's outline is what the export fits: its size
+            // gives the scale, and the crop's place in the image is found by registration.
+            if (outlineM.HasValue)
+            {
+                (double outlineW, double outlineH) = outlineM.Value;
+                double k = image.Width / outlineW;
+                lines.Add($"contorno da vista (Outline): {outlineW:F3} x {outlineH:F3} m -> {k:F4} px/m, altura esperada {outlineH * k:F1} px.");
+                if (Math.Abs((outlineH * k) - image.Height) <= PixelTransform.MeasureHeightTolerancePx)
+                {
+                    ViewRegion model = regions[regions.Count - 1];
+                    (int, int) Range(double spare) =>
+                        ((int)Math.Floor(Math.Min(0, spare)) - SearchMarginPx, (int)Math.Ceiling(Math.Max(0, spare)) + SearchMarginPx);
+                    (int, int) dx = Range(image.Width - (model.Width * k));
+                    (int, int) dy = Range(image.Height - (model.Height * k));
+                    lines.Add($"Escala pelo contorno; recorte do modelo a registrar: {dx.Item1} a {dx.Item2} px na horizontal, {dy.Item1} a {dy.Item2} px na vertical.");
+                    return new ExportedImage(
+                        png,
+                        new PixelTransform(model.MinX, model.MaxY, k, image.Width, image.Height),
+                        model,
+                        string.Join(Environment.NewLine, lines),
+                        (dx, dy));
                 }
             }
 

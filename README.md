@@ -90,6 +90,13 @@ cota e texto) e `_novas` (passagem, mureta, pele de vidro e louça).
 - A imagem sai a **48 px/m** (faixa típica do spec). O exportador mede o PNG
   gerado para achar a região que ele cobre; se nenhuma bater com 1 px de
   tolerância, para e mostra as medidas, sem gravar nada desalinhado.
+- Quando a anotação fora do recorte deixa a imagem maior que o recorte
+  (comum em plantas ampliadas), o px/m sai do contorno da vista
+  (`View.Outline`, a extensão que o Revit enquadra, conferida pela altura) e a
+  posição do recorte na imagem é achada por registro: as bordas das paredes e
+  pilares cortados deslizam sobre as linhas da imagem até encaixar. Só vale
+  um encaixe claramente melhor que os outros; a amostra sai com
+  `source.alinhamento: "registrado"` e a nota no `review.json`.
 - O lote vai para `%USERPROFILE%\floorplans-dataset\` (fora de `Documentos`,
   que costuma estar no OneDrive, cuja sincronização trava arquivos): `images/`,
   `masks_semantic/`, `masks_instance/`, `labels/` (os quatro do dataset),
