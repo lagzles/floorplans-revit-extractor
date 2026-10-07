@@ -35,7 +35,7 @@ namespace FloorplansRevitExtractor.ViewExport
         /// <summary>Rooms of one floor only touch along wall faces; more shared area than this is stacking.</summary>
         private const double MaxSharedFraction = 0.2;
 
-        internal static RoomReading Read(Document doc, ViewSetup setup, ViewRegion crop)
+        internal static RoomReading Read(Document doc, ViewSetup setup, ViewRegion crop, SlabCoverage slabs)
         {
             var unmapped = new List<UnmappedRoomName>();
             var areaWarnings = new List<AreaMismatchWarning>();
@@ -49,6 +49,7 @@ namespace FloorplansRevitExtractor.ViewExport
             int patios = 0;
             int doubleHeight = 0;
             int risingThrough = 0;
+            int underSlab = 0;
             var candidates = new List<(Room Room, RoomPreviewRecord Record, double BaseZ)>();
 
             IEnumerable<Room> rooms = new FilteredElementCollector(doc)
@@ -106,9 +107,29 @@ namespace FloorplansRevitExtractor.ViewExport
                     // the stair (the void layer comes after the stair layer).
                     StructureClass below = MaskClass(candidate);
                     bool keepsClass = below == StructureClass.Stair || below == StructureClass.Void;
-                    elements.Add(GeomElement.Filled(keepsClass ? below : StructureClass.Void, room.Id.Value, new[] { candidate.Polygon }, candidate.Holes));
-                    doubleHeight += keepsClass ? 0 : 1;
-                    risingThrough += keepsClass ? 1 : 0;
+                    if (keepsClass)
+                    {
+                        elements.Add(GeomElement.Filled(below, room.Id.Value, new[] { candidate.Polygon }, candidate.Holes));
+                        risingThrough++;
+                        continue;
+                    }
+
+                    // Only the part with no floor of this plan over it is open to below (a
+                    // mezzanine covers the rest); a room all under the slab has its upper
+                    // limit modelled high and is not a double height.
+                    IReadOnlyList<PolygonWithHoles> open = slabs.OpenPart(candidate.Polygon, candidate.Holes);
+                    if (open.Count == 0)
+                    {
+                        underSlab++;
+                        continue;
+                    }
+
+                    elements.Add(GeomElement.Filled(
+                        StructureClass.Void,
+                        room.Id.Value,
+                        open.Select(p => p.Outer).ToList(),
+                        open.SelectMany(p => p.Holes).ToList()));
+                    doubleHeight++;
                     continue;
                 }
 
@@ -132,7 +153,12 @@ namespace FloorplansRevitExtractor.ViewExport
 
             if (doubleHeight > 0)
             {
-                notes.Add($"{doubleHeight} ambiente(s) de pé-direito duplo do pavimento inferior pintado(s) como vazio (9), fora do label.");
+                notes.Add($"{doubleHeight} ambiente(s) de pé-direito duplo do pavimento inferior: a parte sem laje deste pavimento por cima pintada como vazio (9), fora do label.");
+            }
+
+            if (underSlab > 0)
+            {
+                notes.Add($"{underSlab} ambiente(s) de pavimento inferior que atravessa(m) o corte sob laje deste pavimento ficaram fora (limite superior alto, não pé-direito duplo).");
             }
 
             if (risingThrough > 0)

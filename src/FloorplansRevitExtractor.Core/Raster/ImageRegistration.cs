@@ -25,7 +25,8 @@ namespace FloorplansRevitExtractor.Core.Raster
     public static class ImageRegistration
     {
         public const double MinScore = 0.5;
-        public const double MinLead = 0.1;
+        /// <summary>Points the best shift must beat every other by (decided on the Snowdon batch: 0.10 lost one good view).</summary>
+        public const double MinLead = 0.05;
         public const int Exclusion = 3;
 
         /// <summary>More edge pixels than this are sampled evenly: the score is a share, and big plans have plenty.</summary>

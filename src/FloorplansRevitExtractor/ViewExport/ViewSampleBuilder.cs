@@ -35,9 +35,15 @@ namespace FloorplansRevitExtractor.ViewExport
         {
             ExportedImage image = ViewImageExporter.Export(doc, setup, targetPxPerM, debugFolder);
             RgbImage rgb = PngDecoder.DecodeRgb(image.Png);
-            RoomReading rooms = ViewRoomReader.Read(doc, setup, setup.ModelRegion);
+            RoomReading rooms = ViewRoomReader.Read(doc, setup, setup.ModelRegion, SlabReader.Read(doc, setup));
             WallReading walls = WallSectionReader.Read(doc, setup, image.Transform.PxPerM);
             PillarReading pillars = PillarReader.Read(doc, setup);
+            if (!walls.Elements.Any(e => e.Class == StructureClass.Wall))
+            {
+                // Roof and legend views: the gate would reject them for having no wall; they are not floor plans.
+                throw new ViewNotExportableException(
+                    "Nenhuma parede atravessa o plano de corte desta vista (cobertura, legenda?): não é planta baixa. Nenhuma amostra foi gravada.");
+            }
             (PixelTransform transform, string registration) = image.Search == null
                 ? (image.Transform, null)
                 : Register(setup, image, rgb, walls.Elements.Concat(pillars.Elements).ToList());
